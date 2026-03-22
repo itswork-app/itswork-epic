@@ -35,8 +35,10 @@ export default function RootLayout({
         baseTheme: dark,
         variables: {
           colorPrimary: "#3b82f6",
-          colorBackground: "#050505",
         },
+        elements: {
+          userButtonPopoverCard: "bg-[#0f111a] border border-white/10",
+        }
       }}
     >
       <html
