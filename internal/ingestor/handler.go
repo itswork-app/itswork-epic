@@ -7,6 +7,9 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"itswork.app/internal/repository"
+
+	sentrygin "github.com/getsentry/sentry-go/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 // SetupRouter initializes the Gin engine and creates the routes.
@@ -15,6 +18,14 @@ func SetupRouter(pub *Publisher, repo *repository.TokenRepository) *gin.Engine {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+
+	// Sentry Middleware (Captures panics and sends to Sentry)
+	r.Use(sentrygin.New(sentrygin.Options{
+		Repanic: true,
+	}))
+
+	// OpenTelemetry Middleware (Distributed Tracing)
+	r.Use(otelgin.Middleware("itswork-ingestor"))
 
 	r.POST("/webhook/helius", func(c *gin.Context) {
 		HeliusWebhookHandler(c, pub)

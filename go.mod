@@ -6,11 +6,17 @@ require (
 	cloud.google.com/go/pubsub/v2 v2.5.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/alicebob/miniredis/v2 v2.37.0
+	github.com/getsentry/sentry-go v0.43.0
+	github.com/getsentry/sentry-go/gin v0.43.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/lib/pq v1.12.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.67.0
+	go.opentelemetry.io/otel v1.42.0
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.42.0
+	go.opentelemetry.io/otel/sdk v1.42.0
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 )
@@ -61,7 +67,6 @@ require (
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.67.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0 // indirect
-	go.opentelemetry.io/otel v1.42.0 // indirect
 	go.opentelemetry.io/otel/metric v1.42.0 // indirect
 	go.opentelemetry.io/otel/trace v1.42.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect

@@ -1,10 +1,20 @@
 {
   "venvPath": ".",
   "venv": "venv",
-  "extraPaths": ["."],
+  "extraPaths": [
+    ".",
+    "./api",
+    "./internal"
+  ],
   "executionEnvironments": [
     {
-      "root": "."
+      "root": ".",
+      "pythonPath": "./venv/bin/python",
+      "extraPaths": [
+        ".",
+        "./api",
+        "./internal"
+      ]
     }
   ],
   "exclude": [
