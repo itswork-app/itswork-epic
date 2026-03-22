@@ -31,8 +31,8 @@ export default function Home() {
            
            {/* Subtitle */}
            <p className="text-xl sm:text-2xl text-slate-400/90 max-w-3xl mx-auto font-sans font-light leading-relaxed tracking-wide">
-             <strong className="text-white font-medium">Audit before you ape.</strong> Submit a Solana mint address for real-time AI analysis. <br className="hidden sm:block"/>
-             Detect rugs, honeypots, and hidden vulnerabilities before they drain your wallet.
+             <strong className="text-white font-medium">Smart Money Tracking & Anti-Rug.</strong> <br className="hidden sm:block"/>
+             Submit a Solana mint address for real-time AI analysis of insider moves and hidden vulnerabilities before they drain your wallet.
            </p>
         </div>
         
