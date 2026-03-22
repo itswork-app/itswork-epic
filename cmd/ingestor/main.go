@@ -14,18 +14,29 @@ import (
 
 	"itswork.app/internal/ingestor"
 	"itswork.app/internal/processor"
+	"itswork.app/internal/repository"
+	"itswork.app/pkg/database"
 )
 
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(os.Stdout)
 
-	log.Info().Msg("Starting ItsWork Ingestor & Processor Service")
+	log.Info().Msg("Starting ItsWork Ingestor, Processor & Vault Service")
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
+
+	// Initialize Neon DB Connection Pool (The Vault)
+	db, err := database.InitDB()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize Neon DB")
+	}
+
+	// Initialize Repository
+	repo := repository.NewTokenRepository(db)
 
 	// Initialize PubSub Publisher
 	pub := ingestor.NewPublisher()
@@ -36,7 +47,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to initialize gRPC Brain Client")
 	}
 
-	sub, err := processor.NewSubscriber(brainClient)
+	sub, err := processor.NewSubscriber(brainClient, repo)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize PubSub Subscriber")
 	}
@@ -80,7 +91,13 @@ func main() {
 	// 3. Stop Connection to AI Brain
 	brainClient.Close()
 
-	// 4. Wait and safely flush messages to PubSub before container exits
+	// 4. Safely close Database Connection
+	if db != nil {
+		log.Info().Msg("Closing Neon DB connection pool...")
+		db.Close()
+	}
+
+	// 5. Wait and safely flush messages to PubSub before container exits
 	pub.Shutdown()
 
 	log.Info().Msg("Service exited properly")

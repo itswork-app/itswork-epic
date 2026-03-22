@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"cloud.google.com/go/pubsub/v2" // Standardized to use v2 across project
+	"itswork.app/internal/repository"
 	"github.com/rs/zerolog/log"
 )
 
@@ -20,11 +21,12 @@ type Subscriber struct {
 	client      *pubsub.Client
 	subscriber  *pubsub.Subscriber
 	brainClient *BrainClient
+	repo        *repository.TokenRepository
 	ctx         context.Context
 	cancel      context.CancelFunc
 }
 
-func NewSubscriber(brainClient *BrainClient) (*Subscriber, error) {
+func NewSubscriber(brainClient *BrainClient, repo *repository.TokenRepository) (*Subscriber, error) {
 	projectID := os.Getenv("PROJECT_ID")
 	subID := os.Getenv("SUB_ID")
 	if projectID == "" {
@@ -48,6 +50,7 @@ func NewSubscriber(brainClient *BrainClient) (*Subscriber, error) {
 		client:      client,
 		subscriber:  subscriber,
 		brainClient: brainClient,
+		repo:        repo,
 		ctx:         ctx,
 		cancel:      cancel,
 	}, nil
@@ -90,13 +93,22 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 		return
 	}
 
+	// Persist Analysis result to Neon DB via Repository Layer
+	err = s.repo.SaveAnalysis(ctx, payload.MintAddress, payload.CreatorAddress, resp.Verdict, int(resp.Score))
+	if err != nil {
+		// Log error is handled in Repository, but we Decide Nack or Ack here
+		// Standard: Nack to allow retry if DB is temporarily unstable
+		msg.Nack()
+		return
+	}
+
 	// Output Industrial Intelligence Result
 	log.Info().
 		Str("mint", payload.MintAddress).
 		Int32("score", resp.Score).
 		Str("verdict", resp.Verdict).
 		Str("reason", resp.Reason).
-		Msg("🚀 Token Intelligence Result Received")
+		Msg("🚀 Token Intelligence Result Persisted Successfully")
 
 	// Master Blueprint: Successful processing REQUIRES an Ack
 	msg.Ack()
