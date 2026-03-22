@@ -20,7 +20,6 @@ export function SearchBar() {
     setError("");
 
     try {
-      // Due to Next.js API Proxy we hit the route seamlessly
       const res = await fetch(`/api/v1/token/${address.trim()}`);
       if (!res.ok) {
         throw new Error("Failed to fetch token intelligence");
@@ -38,49 +37,76 @@ export function SearchBar() {
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150">
+    <div className="w-full max-w-3xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 fill-mode-both">
+      {/* Massive Sleek Input Form */}
       <form onSubmit={handleSearch} className="relative flex items-center w-full group">
-        <div className="absolute inset-y-0 left-0 flex items-center pl-5 pointer-events-none transition-colors duration-300 group-focus-within:text-blue-400">
-          <Search className="w-6 h-6 text-gray-400 transition-colors duration-300 group-focus-within:text-blue-400" />
+        
+        <div className="absolute inset-y-0 left-0 flex items-center pl-6 pointer-events-none transition-transform duration-500 group-focus-within:scale-110">
+          <Search className="w-6 h-6 text-slate-500 transition-colors duration-500 group-focus-within:text-blue-400" />
         </div>
+        
         <Input
           type="text"
-          placeholder="Enter Solana mint address (e.g. 7vfCXTUX...)"
-          className="w-full h-16 pl-14 pr-36 text-lg bg-[#0a0a1a] border-white/10 text-white placeholder-gray-500 rounded-full focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all duration-300 font-mono shadow-[0_0_30px_rgba(0,0,0,0.5)]"
+          placeholder="Enter Solana mint (e.g. 7vfCXTUX...)"
+          className="w-full h-20 pl-16 pr-44 text-xl sm:text-2xl bg-[#090b14]/80 backdrop-blur-3xl border-white/10 text-slate-200 placeholder-slate-600 rounded-2xl focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/60 transition-all duration-500 font-mono shadow-[0_20px_40px_-15px_rgba(0,0,0,0.7)] hover:border-white/20"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
         />
-        <Button 
-          type="submit" 
-          disabled={loading || !address.trim()} 
-          className="absolute right-2 h-12 rounded-full bg-blue-600 hover:bg-blue-500 text-white px-8 font-bold text-base transition-all duration-300 shadow-[0_0_15px_rgba(37,99,235,0.4)] hover:shadow-[0_0_20px_rgba(59,130,246,0.6)] disabled:opacity-50 disabled:shadow-none"
-        >
-          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Analyze"}
-        </Button>
+        
+        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+          <Button 
+            type="submit" 
+            disabled={loading || !address.trim()} 
+            className="h-14 rounded-xl bg-white text-black hover:bg-slate-200 px-8 font-sans font-bold text-lg transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:scale-[1.02] disabled:opacity-30 disabled:hover:scale-100"
+          >
+            {loading ? <Loader2 className="w-6 h-6 animate-spin text-black" /> : "Run Analysis"}
+          </Button>
+        </div>
       </form>
 
       {/* Results Section */}
       {error && (
-        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-center text-red-400 animate-in fade-in slide-in-from-top-4">
+        <div className="p-5 rounded-2xl bg-red-950/40 border border-red-500/20 text-center text-red-400 font-sans tracking-wide shadow-lg animate-in fade-in slide-in-from-top-4">
           {error}
         </div>
       )}
 
       {result && (
-        <div className={`p-8 rounded-3xl border backdrop-blur-xl flex flex-col items-center space-y-5 animate-in fade-in zoom-in-95 duration-500 ${
-          result.verdict.toUpperCase() === "SAFE" 
-            ? "bg-green-500/5 border-green-500/20 text-green-400 shadow-[0_0_50px_rgba(34,197,94,0.1)]" 
-            : "bg-red-500/5 border-red-500/20 text-red-500 shadow-[0_0_50px_rgba(239,68,68,0.1)]"
-        }`}>
-          {result.verdict.toUpperCase() === "SAFE" ? (
-             <ShieldCheck className="w-20 h-20 drop-shadow-[0_0_25px_rgba(72,187,120,0.6)] animate-in fade-in zoom-in duration-700" />
-          ) : (
-             <ShieldAlert className="w-20 h-20 drop-shadow-[0_0_25px_rgba(239,68,68,0.6)] animate-pulse" />
-          )}
-          <div className="text-center space-y-2">
-            <h3 className="text-4xl font-black tracking-widest uppercase">{result.verdict}</h3>
-            <div className="h-px w-24 bg-current/20 mx-auto my-4" />
-            <p className="text-white/70 font-mono text-xl">Intelligence Score: <br/><span className="font-bold text-3xl text-white block mt-2">{result.score}/100</span></p>
+        <div className="relative animate-in fade-in zoom-in-95 duration-700">
+          {/* Glowing backdrop matching result */}
+          <div className={`absolute inset-0 blur-3xl opacity-20 pointer-events-none ${
+            result.verdict.toUpperCase() === "SAFE" ? "bg-emerald-500" : "bg-rose-500"
+          }`} />
+          
+          <div className={`relative p-10 sm:p-12 rounded-3xl border backdrop-blur-2xl flex flex-col items-center space-y-8 shadow-2xl ${
+            result.verdict.toUpperCase() === "SAFE" 
+              ? "bg-[#021008]/80 border-emerald-500/20" 
+              : "bg-[#100303]/80 border-rose-500/20"
+          }`}>
+            <div className="relative">
+              <div className={`absolute inset-0 blur-xl opacity-50 ${result.verdict.toUpperCase() === "SAFE" ? "bg-emerald-400" : "bg-rose-500"}`} />
+              {result.verdict.toUpperCase() === "SAFE" ? (
+                 <ShieldCheck className="relative w-24 h-24 text-emerald-400" />
+              ) : (
+                 <ShieldAlert className="relative w-24 h-24 text-rose-500 animate-pulse" />
+              )}
+            </div>
+            
+            <div className="text-center space-y-4 w-full">
+              <h3 className={`text-5xl sm:text-6xl font-heading font-black tracking-widest uppercase ${
+                result.verdict.toUpperCase() === "SAFE" ? "text-emerald-400" : "text-rose-500"
+              }`}>{result.verdict}</h3>
+              
+              <div className="h-px w-32 bg-white/10 mx-auto my-6" />
+              
+              <div className="flex flex-col items-center">
+                <p className="text-slate-400 font-sans text-sm tracking-widest uppercase mb-2">Overall Intelligence Score</p>
+                <div className="flex items-baseline space-x-1">
+                  <span className="font-mono text-5xl sm:text-6xl font-bold text-white tracking-tighter">{result.score}</span>
+                  <span className="font-mono text-2xl text-slate-500">/100</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

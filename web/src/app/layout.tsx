@@ -1,21 +1,26 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Outfit, JetBrains_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const outfit = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "ItsWork.app | AI Smart Contract Auditor",
-  description: "Real-time AI smart contract auditing platform for Solana",
+  title: "ItsWork.app | Industrial AI Intelligence",
+  description: "Institution-grade smart contract auditing and real-time Solana intelligence.",
 };
 
 export default function RootLayout({
@@ -24,12 +29,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      appearance={{
+        variables: {
+          colorPrimary: "#3b82f6",
+          colorBackground: "#0a0a0a",
+          colorText: "white",
+          colorInputBackground: "#171717",
+          colorInputText: "white",
+        },
+      }}
+    >
       <html
         lang="en"
-        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+        className={`${inter.variable} ${outfit.variable} ${jetbrainsMono.variable} h-full antialiased dark`}
       >
-        <body className="min-h-full flex flex-col">{children}</body>
+        <body className="min-h-dvh flex flex-col bg-[#050505] text-slate-50 font-sans selection:bg-blue-500/30 selection:text-white">
+          {children}
+        </body>
       </html>
     </ClerkProvider>
   );

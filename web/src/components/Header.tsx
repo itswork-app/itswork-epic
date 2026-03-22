@@ -6,22 +6,32 @@ export async function Header() {
   const { userId } = await auth();
 
   return (
-    <header className="flex items-center justify-between p-4 border-b border-white/5 bg-black/40 backdrop-blur-xl sticky top-0 z-50">
-      <div className="flex items-center space-x-2">
+    <header className="fixed top-0 inset-x-0 h-20 flex items-center justify-between px-6 sm:px-10 border-b border-white/[0.04] bg-black/30 backdrop-blur-2xl z-50 transition-colors">
+      <div className="flex items-center space-x-3">
+        <div className="w-8 h-8 rounded-lg bg-linear-to-tr from-blue-600 to-indigo-500 shadow-[0_0_20px_rgba(59,130,246,0.5)] flex items-center justify-center">
+          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
         <Link href="/">
-          <span className="text-2xl font-black tracking-tighter bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ItsWork.</span>
+          <span className="text-2xl font-heading font-black tracking-tight text-white hover:opacity-80 transition-opacity">
+            ItsWork<span className="text-blue-500">.</span>
+          </span>
         </Link>
       </div>
       <div>
         {!userId ? (
           <SignInButton mode="modal">
-            <button className="px-5 py-2 text-sm font-semibold text-white transition-all border rounded-full border-white/10 bg-white/5 hover:bg-white/10 hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]">Sign In</button>
+            <button className="px-6 py-2.5 text-sm font-medium text-white transition-all duration-300 border rounded-full border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] font-sans">
+              Connect Identity
+            </button>
           </SignInButton>
         ) : (
-          <UserButton appearance={{ elements: { userButtonAvatarBox: "w-10 h-10 border border-white/20" } }} />
+          <div className="p-1 rounded-full border border-white/10 bg-white/5 hover:border-blue-500/50 transition-colors shadow-inner">
+            <UserButton appearance={{ elements: { userButtonAvatarBox: "w-9 h-9 border border-white/20 rounded-full" } }} />
+          </div>
         )}
       </div>
     </header>
   )
 }
-
