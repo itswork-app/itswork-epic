@@ -1,0 +1,23 @@
+# Ruff configuration for ItsWork-epic Python Brain
+line-length = 120
+target-version = "py312"
+
+[lint]
+# Exclude generated proto files from linting
+exclude = [
+    "api/proto/*_pb2.py",
+    "api/proto/*_pb2_grpc.py",
+    "venv",
+]
+
+select = ["E", "F", "I", "N"]
+ignore = ["N802"] # N802: Ignore gRPC CamelCase methods to match Master Blueprint CONTRACTS.proto
+
+[lint.isort]
+known-first-party = ["api", "internal"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
