@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package itswork.intelligence;
 
+option go_package = "itswork.app/api/proto";
+
 service IntelligenceService {
   rpc AnalyzeToken (TokenRequest) returns (VerdictResponse);
 }

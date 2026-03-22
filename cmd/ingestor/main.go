@@ -13,13 +13,14 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"itswork.app/internal/ingestor"
+	"itswork.app/internal/processor"
 )
 
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(os.Stdout)
 
-	log.Info().Msg("Starting ItsWork Ingestor Service")
+	log.Info().Msg("Starting ItsWork Ingestor & Processor Service")
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -28,6 +29,20 @@ func main() {
 
 	// Initialize PubSub Publisher
 	pub := ingestor.NewPublisher()
+
+	// Initialize BrainClient and Subscriber (The Nervous System)
+	brainClient, err := processor.NewBrainClient()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize gRPC Brain Client")
+	}
+
+	sub, err := processor.NewSubscriber(brainClient)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize PubSub Subscriber")
+	}
+
+	// Start Subscriber in a background goroutine
+	go sub.Start()
 
 	// Pass Publisher Dependency directly
 	router := ingestor.SetupRouter(pub)
@@ -48,17 +63,25 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Info().Msg("Interrupt signal received. Shutting down server gracefully...")
+	log.Info().Msg("Interrupt signal received. Shutting down service gracefully...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Graceful Shutdown Chain:
+	// 1. Stop accepting new HTTP requests
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal().Err(err).Msg("Server forced to shutdown")
 	}
 
-	// Wait and safely flush messages to PubSub before container exits
+	// 2. Stop Pulling new messages from PubSub
+	sub.Shutdown()
+
+	// 3. Stop Connection to AI Brain
+	brainClient.Close()
+
+	// 4. Wait and safely flush messages to PubSub before container exits
 	pub.Shutdown()
 
-	log.Info().Msg("Server exited properly")
+	log.Info().Msg("Service exited properly")
 }
