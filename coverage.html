@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">itswork.app/cmd/ingestor/main.go (86.5%)</option>
+				<option value="file0">itswork.app/cmd/ingestor/main.go (87.3%)</option>
 				
 				<option value="file1">itswork.app/internal/ingestor/handler.go (100.0%)</option>
 				
@@ -65,9 +65,11 @@
 				
 				<option value="file4">itswork.app/internal/processor/subscriber.go (81.6%)</option>
 				
-				<option value="file5">itswork.app/internal/repository/token_analysis.go (86.4%)</option>
+				<option value="file5">itswork.app/internal/repository/token_analysis.go (94.1%)</option>
 				
-				<option value="file6">itswork.app/pkg/database/db.go (80.0%)</option>
+				<option value="file6">itswork.app/pkg/cache/redis.go (100.0%)</option>
+				
+				<option value="file7">itswork.app/pkg/database/db.go (80.0%)</option>
 				
 				</select>
 			</div>
@@ -99,6 +101,7 @@ import (
         "itswork.app/internal/ingestor"
         "itswork.app/internal/processor"
         "itswork.app/internal/repository"
+        "itswork.app/pkg/cache"
         "itswork.app/pkg/database"
 )
 
@@ -136,7 +139,12 @@ func SetupApp(opts ...AppOptions) (*App, error) <span class="cov8" title="1">{
                 }</span>
         }
 
-        <span class="cov8" title="1">repo := repository.NewTokenRepository(db)
+        <span class="cov8" title="1">redisClient, err := cache.InitRedis()
+        if err != nil </span><span class="cov8" title="1">{
+                log.Warn().Err(err).Msg("Redis init failed - functioning without cache if expected")
+        }</span>
+
+        <span class="cov8" title="1">repo := repository.NewTokenRepository(db, redisClient)
         pub := ingestor.NewPublisher()
 
         brainClient, err := processor.NewBrainClient()
@@ -152,7 +160,7 @@ func SetupApp(opts ...AppOptions) (*App, error) <span class="cov8" title="1">{
                 sub = processor.NewSubscriber(brainClient, repo, nil)
         }</span>
 
-        <span class="cov8" title="1">router := ingestor.SetupRouter(pub)
+        <span class="cov8" title="1">router := ingestor.SetupRouter(pub, repo)
         srv := &amp;http.Server{
                 Addr:    ":" + port,
                 Handler: router,
@@ -230,10 +238,12 @@ import (
 
         "github.com/gin-gonic/gin"
         "github.com/rs/zerolog/log"
+        
+        "itswork.app/internal/repository"
 )
 
 // SetupRouter initializes the Gin engine and creates the routes.
-func SetupRouter(pub *Publisher) *gin.Engine <span class="cov8" title="1">{
+func SetupRouter(pub *Publisher, repo *repository.TokenRepository) *gin.Engine <span class="cov8" title="1">{
         gin.SetMode(gin.ReleaseMode)
 
         r := gin.New()
@@ -245,6 +255,10 @@ func SetupRouter(pub *Publisher) *gin.Engine <span class="cov8" title="1">{
 
         <span class="cov8" title="1">r.GET("/health", func(c *gin.Context) </span><span class="cov8" title="1">{
                 c.JSON(http.StatusOK, gin.H{"status": "ok"})
+        }</span>)
+
+        <span class="cov8" title="1">r.GET("/api/v1/token/:mint", func(c *gin.Context) </span><span class="cov8" title="1">{
+                TokenAnalysisHandler(c, repo)
         }</span>)
 
         <span class="cov8" title="1">return r</span>
@@ -270,6 +284,27 @@ func HeliusWebhookHandler(c *gin.Context, pub *Publisher) <span class="cov8" tit
                 log.Warn().Msg("Publisher channel is full, dropping/delaying webhook")
                 c.JSON(http.StatusTooManyRequests, gin.H{"error": "Ingestion queue at capacity"})</span>
         }
+}
+
+// TokenAnalysisHandler processes requests to retrieve the AI verdict of a token.
+func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository) <span class="cov8" title="1">{
+        mint := c.Param("mint")
+        if mint == "" </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mint parameter"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">resp, err := repo.GetAnalysis(c.Request.Context(), mint)
+        if err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+                return
+        }</span>
+
+        <span class="cov8" title="1">c.JSON(http.StatusOK, gin.H{
+                "mint":    mint,
+                "score":   resp.Score,
+                "verdict": resp.Verdict,
+        })</span>
 }
 </pre>
 		
@@ -609,19 +644,24 @@ func (s *Subscriber) Shutdown() <span class="cov8" title="1">{
 import (
         "context"
         "database/sql"
+        "encoding/json"
+        "fmt"
         "time"
 
+        "itswork.app/api/proto"
+        "github.com/redis/go-redis/v9"
         "github.com/rs/zerolog/log"
 )
 
 // TokenRepository handles database operations for token analysis
 type TokenRepository struct {
-        db *sql.DB
+        db    *sql.DB
+        redis *redis.Client
 }
 
 // NewTokenRepository creates a new instance of TokenRepository
-func NewTokenRepository(db *sql.DB) *TokenRepository <span class="cov8" title="1">{
-        return &amp;TokenRepository{db: db}
+func NewTokenRepository(db *sql.DB, rdb *redis.Client) *TokenRepository <span class="cov8" title="1">{
+        return &amp;TokenRepository{db: db, redis: rdb}
 }</span>
 
 // SaveAnalysis persists the AI verdict for a token using a nested transaction (Wallets + TokenAnalysis)
@@ -674,9 +714,103 @@ func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdi
         <span class="cov8" title="1">log.Debug().Str("mint", mint).Msg("Atomic transaction successful: Wallet and Analysis persisted")
         return nil</span>
 }
+
+// GetAnalysis retrieves the token verdict utilizing a Look-Aside Caching Strategy with Upstash Redis
+func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string) (*proto.VerdictResponse, error) <span class="cov8" title="1">{
+        cacheKey := fmt.Sprintf("token_verdict:%s", mint)
+
+        // 1. Cache Check (Look-Aside)
+        if r.redis != nil </span><span class="cov8" title="1">{
+                val, err := r.redis.Get(ctx, cacheKey).Result()
+                if err == nil </span><span class="cov8" title="1">{
+                        var resp proto.VerdictResponse
+                        if unmarshalErr := json.Unmarshal([]byte(val), &amp;resp); unmarshalErr == nil </span><span class="cov8" title="1">{
+                                log.Debug().Str("mint", mint).Msg("Cache Hit: Served Verdict from Redis")
+                                return &amp;resp, nil
+                        }</span>
+                        <span class="cov8" title="1">log.Warn().Err(err).Msg("Failed to unmarshal cached verdict, falling back to database")</span>
+                } else<span class="cov8" title="1"> if err != redis.Nil </span><span class="cov8" title="1">{
+                        log.Warn().Err(err).Msg("Redis GET error, falling back to database")
+                }</span>
+        }
+
+        // 2. Cache Miss: Query Database
+        <span class="cov8" title="1">query := `
+                SELECT verdict, rug_score
+                FROM token_analysis
+                WHERE mint_address = $1
+        `
+        var verdict string
+        var score int32
+
+        err := r.db.QueryRowContext(ctx, query, mint).Scan(&amp;verdict, &amp;score)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == sql.ErrNoRows </span><span class="cov8" title="1">{
+                        return nil, fmt.Errorf("analysis not found for mint: %s", mint)
+                }</span>
+                <span class="cov8" title="1">log.Error().Err(err).Str("mint", mint).Msg("Database query failed")
+                return nil, err</span>
+        }
+
+        <span class="cov8" title="1">resp := &amp;proto.VerdictResponse{
+                Score:   score,
+                Verdict: verdict,
+        }
+
+        // 3. Cache Miss Recovery: Store result in Redis configured with 5-minute TTL
+        if r.redis != nil </span><span class="cov8" title="1">{
+                data, marshalErr := json.Marshal(resp)
+                if marshalErr == nil </span><span class="cov8" title="1">{
+                        err = r.redis.Set(ctx, cacheKey, data, 5*time.Minute).Err()
+                        if err != nil </span><span class="cov8" title="1">{
+                                log.Warn().Err(err).Msg("Failed to cache verdict to Redis")
+                        }</span> else<span class="cov8" title="1"> {
+                                log.Debug().Str("mint", mint).Msg("Cache Miss: Fetched from DB and cached outcome to Redis")
+                        }</span>
+                }
+        }
+
+        <span class="cov8" title="1">return resp, nil</span>
+}
 </pre>
 		
-		<pre class="file" id="file6" style="display: none">package database
+		<pre class="file" id="file6" style="display: none">package cache
+
+import (
+        "context"
+        "fmt"
+        "os"
+
+        "github.com/redis/go-redis/v9"
+        "github.com/rs/zerolog/log"
+)
+
+// InitRedis initializes a Redis client from the REDIS_URL environment variable.
+func InitRedis() (*redis.Client, error) <span class="cov8" title="1">{
+        redisURL := os.Getenv("REDIS_URL")
+        if redisURL == "" </span><span class="cov8" title="1">{
+                log.Warn().Msg("REDIS_URL not set, Redis cache features will fail")
+                return nil, fmt.Errorf("REDIS_URL environment variable is required")
+        }</span>
+
+        <span class="cov8" title="1">opts, err := redis.ParseURL(redisURL)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("failed to parse REDIS_URL: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">client := redis.NewClient(opts)
+
+        ctx := context.Background()
+        if err := client.Ping(ctx).Err(); err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("failed to ping Redis: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">log.Info().Msg("Successfully connected to Upstash Redis")
+        return client, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package database
 
 import (
         "database/sql"
