@@ -23,10 +23,10 @@ export default function Home() {
            </div>
            
            {/* Elite Typography Heading */}
-           <h1 className="text-6xl sm:text-8xl md:text-[7.5rem] font-heading font-black tracking-tighter leading-[0.95] drop-shadow-2xl">
-             <span className="text-white/90">Industrial</span>
+           <h1 className="text-5xl sm:text-6xl md:text-[5.5rem] font-heading font-black tracking-tight leading-[1.05] drop-shadow-2xl">
+             <span className="text-white/90">ItsWork<span className="text-blue-500">.</span></span>
              <br />
-             <span className="bg-linear-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">Intelligence</span>
+             <span className="bg-linear-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">Solana Token Intelligence</span>
            </h1>
            
            {/* Subtitle */}
