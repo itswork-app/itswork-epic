@@ -6,9 +6,19 @@ import (
 	"os"
 
 	"cloud.google.com/go/pubsub/v2" // Standardized to use v2 across project
-	"itswork.app/internal/repository"
+	"itswork.app/api/proto"
 	"github.com/rs/zerolog/log"
 )
+
+// Brainger defines the interface for AI analysis calls
+type Brainger interface {
+	AnalyzeToken(ctx context.Context, mint, creator string) (*proto.VerdictResponse, error)
+}
+
+// VaultRepository defines the interface for data persistence
+type VaultRepository interface {
+	SaveAnalysis(ctx context.Context, mint, creator, verdict string, score int) error
+}
 
 // HeliusPayload represents the simplified structure to extract needed fields
 type HeliusPayload struct {
@@ -17,16 +27,33 @@ type HeliusPayload struct {
 	// Tambahkan field lain jika spek Helius berkembang
 }
 
+// PubSubSubscriber defines the interface for pulling messages
+type PubSubSubscriber interface {
+	Receive(ctx context.Context, f func(context.Context, *pubsub.Message)) error
+}
+
 type Subscriber struct {
 	client      *pubsub.Client
-	subscriber  *pubsub.Subscriber
-	brainClient *BrainClient
-	repo        *repository.TokenRepository
+	subscriber  PubSubSubscriber
+	brainClient Brainger
+	repo        VaultRepository
 	ctx         context.Context
 	cancel      context.CancelFunc
 }
 
-func NewSubscriber(brainClient *BrainClient, repo *repository.TokenRepository) (*Subscriber, error) {
+func NewSubscriber(brainClient Brainger, repo VaultRepository, subscriber PubSubSubscriber) *Subscriber {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return &Subscriber{
+		subscriber:  subscriber,
+		brainClient: brainClient,
+		repo:        repo,
+		ctx:         ctx,
+		cancel:      cancel,
+	}
+}
+
+func InitSubscriber(brainClient Brainger, repo VaultRepository) (*Subscriber, error) {
 	projectID := os.Getenv("PROJECT_ID")
 	subID := os.Getenv("SUB_ID")
 	if projectID == "" {
@@ -36,27 +63,23 @@ func NewSubscriber(brainClient *BrainClient, repo *repository.TokenRepository) (
 		subID = "helius-ingestion-sub"
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
+	ctx := context.Background()
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
-		cancel()
 		return nil, err
 	}
 
-	subscriber := client.Subscriber(subID)
-
-	return &Subscriber{
-		client:      client,
-		subscriber:  subscriber,
-		brainClient: brainClient,
-		repo:        repo,
-		ctx:         ctx,
-		cancel:      cancel,
-	}, nil
+	sub := client.Subscriber(subID)
+	s := NewSubscriber(brainClient, repo, sub)
+	s.client = client
+	return s, nil
 }
 
 func (s *Subscriber) Start() {
+	if s.subscriber == nil {
+		log.Warn().Msg("Subscriber is nil, skipping Receive loop (likely in test mode)")
+		return
+	}
 	log.Info().Msg("Starting Pub/Sub Subscriber worker...")
 
 	// Concurrent Processing: Receive utilizes a pool of goroutines internally
