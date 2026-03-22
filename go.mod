@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	cloud.google.com/go/pubsub/v2 v2.5.0
 	github.com/gin-gonic/gin v1.12.0
+	github.com/lib/pq v1.12.0
 	github.com/rs/zerolog v1.34.0
 	google.golang.org/grpc v1.79.2
 	google.golang.org/protobuf v1.36.11
