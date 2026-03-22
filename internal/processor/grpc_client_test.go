@@ -1,0 +1,60 @@
+package processor
+
+import (
+	"context"
+	"net"
+	"testing"
+
+	"itswork.app/api/proto"
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
+)
+
+type mockIntelligenceServer struct {
+	proto.UnimplementedIntelligenceServiceServer
+}
+
+func (m *mockIntelligenceServer) AnalyzeToken(ctx context.Context, req *proto.TokenRequest) (*proto.VerdictResponse, error) {
+	return &proto.VerdictResponse{
+		Score:   80,
+		Verdict: "SUSPICIOUS",
+		Reason:  "Mocked reasoning for " + req.MintAddress,
+	}, nil
+}
+
+func TestBrainClient_AnalyzeToken_Success(t *testing.T) {
+	lis := bufconn.Listen(1024 * 1024)
+	s := grpc.NewServer()
+	proto.RegisterIntelligenceServiceServer(s, &mockIntelligenceServer{})
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			panic(err)
+		}
+	}()
+
+	bufDialer := func(context.Context, string) (net.Conn, error) {
+		return lis.Dial()
+	}
+
+	client, err := NewBrainClientWithTarget("passthrough:///bufnet", 
+		grpc.WithContextDialer(bufDialer),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	assert.NoError(t, err)
+	if client != nil {
+		defer client.Close()
+	}
+
+	resp, err := client.AnalyzeToken(context.Background(), "mint1", "creator1")
+	assert.NoError(t, err)
+	assert.Equal(t, int32(80), resp.Score)
+	assert.Equal(t, "SUSPICIOUS", resp.Verdict)
+}
+
+func TestBrainClient_AnalyzeToken_NilClient(t *testing.T) {
+	bc := &BrainClient{client: nil}
+	_, err := bc.AnalyzeToken(context.Background(), "mint", "creator")
+	assert.Error(t, err)
+}

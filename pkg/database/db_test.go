@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestInitDB_NoURL(t *testing.T) {
@@ -15,4 +16,11 @@ func TestInitDB_NoURL(t *testing.T) {
 	if db != nil {
 		db.Close()
 	}
+}
+
+func TestInitDBWithDriver_Mock(t *testing.T) {
+	db, mock, _ := sqlmock.New()
+	mock.ExpectPing()
+	db.Close()
+	_, _ = InitDBWithDriver("sqlmock", "mock_dsn")
 }
