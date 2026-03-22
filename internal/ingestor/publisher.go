@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub" //nolint:staticcheck
 	"github.com/rs/zerolog/log"
 )
 
