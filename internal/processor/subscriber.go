@@ -6,8 +6,9 @@ import (
 	"os"
 
 	"cloud.google.com/go/pubsub/v2" // Standardized to use v2 across project
-	"itswork.app/api/proto"
 	"github.com/rs/zerolog/log"
+
+	"itswork.app/api/proto"
 )
 
 // Brainger defines the interface for AI analysis calls

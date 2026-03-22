@@ -66,7 +66,7 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 	if err != nil {
 		// Log error but continue to cover initialization sequence in tests if possible
 		log.Warn().Err(err).Msg("gRPC Brain Client init failed - normal in restricted test envs")
-		brainClient = &processor.BrainClient{} 
+		brainClient = &processor.BrainClient{}
 	}
 
 	sub, err := processor.InitSubscriber(brainClient, repo)
@@ -132,7 +132,7 @@ func RunMain(opts ...AppOptions) error {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	// In real main, this blocks. In tests, we can skip it if we want, 
+	// In real main, this blocks. In tests, we can skip it if we want,
 	// but RunMain should normally block or return.
 	// For testing purposes, we'll allow an early exit if SIGUSR1 is sent or similar.
 	<-quit

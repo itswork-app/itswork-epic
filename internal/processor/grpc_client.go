@@ -5,10 +5,11 @@ import (
 	"errors"
 	"os"
 
-	"itswork.app/api/proto"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"github.com/rs/zerolog/log"
+
+	"itswork.app/api/proto"
 )
 
 type BrainClient struct {

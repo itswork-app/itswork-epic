@@ -5,9 +5,10 @@ import (
 	"os"
 	"testing"
 
-	"itswork.app/api/proto"
-	"github.com/stretchr/testify/assert"
 	"cloud.google.com/go/pubsub/v2"
+	"github.com/stretchr/testify/assert"
+
+	"itswork.app/api/proto"
 )
 
 type mockBrainger struct {
@@ -32,14 +33,14 @@ func (m *mockRepo) SaveAnalysis(ctx context.Context, mint, creator, verdict stri
 func TestSubscriber_HandleMessage_Success(t *testing.T) {
 	brain := &mockBrainger{}
 	repo := &mockRepo{}
-	
+
 	s := NewSubscriber(brain, repo, nil)
 
 	data := []byte(`{"mint_address": "MINT1", "creator_address": "CREA1"}`)
 	msg := &pubsub.Message{
 		Data: data,
 	}
-	
+
 	s.handleMessage(context.Background(), msg)
 	assert.NotNil(t, s.brainClient)
 }

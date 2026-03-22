@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	
+
 	"itswork.app/internal/repository"
 )
 
@@ -44,7 +44,7 @@ func HeliusWebhookHandler(c *gin.Context, pub *Publisher) {
 	// Stateless logic: passing to asynchronous channel ensures latency < 50ms
 	select {
 	case pub.PublishChan <- payload:
-		// Succesfully handed off
+		// Successfully handed off
 		c.JSON(http.StatusOK, gin.H{"status": "enqueued"})
 	default:
 		// Publisher Channel is backpressuring (full)

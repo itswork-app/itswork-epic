@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	"itswork.app/api/proto"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
+
+	"itswork.app/api/proto"
 )
 
 // TokenRepository handles database operations for token analysis
