@@ -14,10 +14,10 @@ import (
 func TestSmoke_HeliusWebhook(t *testing.T) {
 	// Skip if not in E2E environment or if local server isn't up
 	client := &http.Client{Timeout: 2 * time.Second}
-	
+
 	// Create Mock Helius Payload
 	payload := []byte(`{"mint_address": "E2E_SMOKE_TEST_1", "creator_address": "CREATOR_E2E_1"}`)
-	
+
 	url := "http://localhost:8080/webhook/helius"
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {

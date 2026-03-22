@@ -38,7 +38,7 @@ func TestSaveAnalysis_Success(t *testing.T) {
 	creatorUUID := "uuid-123"
 
 	mock.ExpectBegin()
-	
+
 	// Stage 1: Wallet UPSERT
 	mock.ExpectQuery("INSERT INTO wallets").
 		WithArgs(creator).
@@ -194,7 +194,7 @@ func TestGetAnalysis_RedisGetAndSetError(t *testing.T) {
 
 	repo := NewTokenRepository(db, rdb)
 	ctx := context.Background()
-	
+
 	// Close miniredis immediately to force Redis GET and SET network errors
 	mr.Close()
 

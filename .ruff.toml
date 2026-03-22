@@ -2,14 +2,14 @@
 line-length = 120
 target-version = "py312"
 
-[lint]
-# Exclude generated proto files from linting
+# Exclude generated proto files from linting and formatting
 exclude = [
     "api/proto/*_pb2.py",
     "api/proto/*_pb2_grpc.py",
     "venv",
 ]
 
+[lint]
 select = ["E", "F", "I", "N"]
 ignore = ["N802"] # N802: Ignore gRPC CamelCase methods to match Master Blueprint CONTRACTS.proto
 

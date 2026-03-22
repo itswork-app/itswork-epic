@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+
 	"itswork.app/internal/ingestor"
 	"itswork.app/internal/processor"
 
@@ -24,21 +25,21 @@ func TestApp_Config(t *testing.T) {
 func TestApp_Lifecycle(t *testing.T) {
 	// Setup app manually with mocks to avoid real networking
 	app := &App{
-		Port:   "9999",
-		Server: &http.Server{Addr: ":9999"},
-		Sub:    processor.NewSubscriber(nil, nil, nil),
+		Port:        "9999",
+		Server:      &http.Server{Addr: ":9999"},
+		Sub:         processor.NewSubscriber(nil, nil, nil),
 		BrainClient: &processor.BrainClient{},
-		Pub:    ingestor.NewPublisher(),
+		Pub:         ingestor.NewPublisher(),
 	}
 
 	// Run orchestration (in background)
 	app.Run()
-	
+
 	// Fast Shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	app.Shutdown(ctx)
-	
+
 	assert.NotNil(t, app.Server)
 }
 
@@ -53,7 +54,7 @@ func TestSetupApp_Success(t *testing.T) {
 func TestRunMain_Signal(t *testing.T) {
 	db, _, _ := sqlmock.New()
 	defer db.Close()
-	
+
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		p, _ := os.FindProcess(os.Getpid())

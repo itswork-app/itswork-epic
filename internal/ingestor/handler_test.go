@@ -91,46 +91,46 @@ func TestHeliusWebhookHandler_BodyError(t *testing.T) {
 
 func TestTokenAnalysisHandler_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
 	defer db.Close()
-	
+
 	repo := repository.NewTokenRepository(db, nil) // Mocking without Redis cache
-	
+
 	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint123").
 		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score"}).AddRow("SAFE", 90))
 
 	router := SetupRouter(nil, repo)
-	
+
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "SAFE")
 }
 
 func TestTokenAnalysisHandler_NotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
 	defer db.Close()
-	
+
 	repo := repository.NewTokenRepository(db, nil)
-	
+
 	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint404").
 		WillReturnError(sql.ErrNoRows)
 
 	router := SetupRouter(nil, repo)
-	
+
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint404", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 

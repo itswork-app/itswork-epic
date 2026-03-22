@@ -40,10 +40,10 @@ func TestInitRedis_InvalidURL(t *testing.T) {
 func TestInitRedis_PingFailed(t *testing.T) {
 	mr, err := miniredis.Run()
 	assert.NoError(t, err)
-	
+
 	os.Setenv("REDIS_URL", "redis://"+mr.Addr())
 	defer os.Unsetenv("REDIS_URL")
-    
+
 	mr.Close() // Close immediately to trigger Dial/Ping failure
 
 	client, err := InitRedis()

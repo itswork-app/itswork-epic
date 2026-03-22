@@ -5,11 +5,12 @@ import (
 	"net"
 	"testing"
 
-	"itswork.app/api/proto"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
+
+	"itswork.app/api/proto"
 )
 
 type mockIntelligenceServer struct {
@@ -38,7 +39,7 @@ func TestBrainClient_AnalyzeToken_Success(t *testing.T) {
 		return lis.Dial()
 	}
 
-	client, err := NewBrainClientWithTarget("passthrough:///bufnet", 
+	client, err := NewBrainClientWithTarget("passthrough:///bufnet",
 		grpc.WithContextDialer(bufDialer),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)

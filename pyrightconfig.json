@@ -12,6 +12,10 @@
     "**/__pycache__",
     "venv"
   ],
+  "ignore": [
+    "**/*_pb2.py",
+    "**/*_pb2_grpc.py"
+  ],
   "reportMissingImports": true,
   "typeCheckingMode": "basic"
 }
