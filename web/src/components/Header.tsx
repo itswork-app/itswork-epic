@@ -6,7 +6,7 @@ export async function Header() {
   const { userId } = await auth();
 
   return (
-    <header className="fixed top-0 inset-x-0 h-20 flex items-center justify-between px-6 sm:px-10 border-b border-white/[0.04] bg-black/30 backdrop-blur-2xl z-50 transition-colors">
+    <header className="fixed top-0 inset-x-0 h-20 flex items-center justify-between px-6 sm:px-10 border-b border-white/4 bg-black/30 backdrop-blur-2xl z-50 transition-colors">
       <div className="flex items-center space-x-3">
         <div className="w-8 h-8 rounded-lg bg-linear-to-tr from-blue-600 to-indigo-500 shadow-[0_0_20px_rgba(59,130,246,0.5)] flex items-center justify-center">
           <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -22,7 +22,7 @@ export async function Header() {
       <div>
         {!userId ? (
           <SignInButton mode="modal">
-            <button className="px-6 py-2.5 text-sm font-medium text-white transition-all duration-300 border rounded-full border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] font-sans">
+            <button className="px-6 py-2.5 text-sm font-medium text-white transition-all duration-300 border rounded-full border-white/10 bg-white/3 hover:bg-white/8 hover:border-white/20 hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] font-sans">
               Connect Identity
             </button>
           </SignInButton>
