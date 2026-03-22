@@ -1,0 +1,16 @@
+{
+  "source_directories": [
+    "."
+  ],
+  "python_version": "3.12",
+  "search_path": [
+    "venv/lib/python3.12/site-packages",
+    "api",
+    "internal"
+  ],
+  "exclude": [
+    "venv/.*",
+    "web/.*",
+    ".*/node_modules/.*"
+  ]
+}

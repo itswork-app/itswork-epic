@@ -8,7 +8,7 @@ import (
 
 	"itswork.app/internal/repository"
 
-	"github.com/getsentry/sentry-go/gin"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
