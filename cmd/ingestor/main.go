@@ -16,26 +16,27 @@ import (
 )
 
 func main() {
-	// Initialize Structured Logging (JSON format for Google Cloud Logging)
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(os.Stdout)
 
 	log.Info().Msg("Starting ItsWork Ingestor Service")
 
-	// Ensure Stateless execution by pulling configs from standard Env Vars
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	router := ingestor.SetupRouter()
+	// Initialize PubSub Publisher
+	pub := ingestor.NewPublisher()
+
+	// Pass Publisher Dependency directly
+	router := ingestor.SetupRouter(pub)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: router,
 	}
 
-	// Run the server in a goroutine so that it doesn't block graceful shutdown
 	go func() {
 		log.Info().Str("port", port).Msg("Server listening on port")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -43,7 +44,6 @@ func main() {
 		}
 	}()
 
-	// Graceful Shutdown logic
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
@@ -56,6 +56,9 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal().Err(err).Msg("Server forced to shutdown")
 	}
+
+	// Wait and safely flush messages to PubSub before container exits
+	pub.Shutdown()
 
 	log.Info().Msg("Server exited properly")
 }
