@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"errors"
 	"os"
 
 	"itswork.app/api/proto"
@@ -20,14 +21,13 @@ func NewBrainClient() (*BrainClient, error) {
 	if target == "" {
 		target = "localhost:50051"
 	}
+	return NewBrainClientWithTarget(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+}
 
+func NewBrainClientWithTarget(target string, opts ...grpc.DialOption) (*BrainClient, error) {
 	log.Info().Str("target", target).Msg("Connecting to Python AI Brain via gRPC...")
 
-	// Setup connection with insecure credentials for local/internal cluster communication
-	// Industrial Grade: Using NewClient (Non-blocking) as DialContext is deprecated.
-	conn, err := grpc.NewClient(target, 
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	conn, err := grpc.NewClient(target, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -39,6 +39,9 @@ func NewBrainClient() (*BrainClient, error) {
 }
 
 func (bc *BrainClient) AnalyzeToken(ctx context.Context, mint, creator string) (*proto.VerdictResponse, error) {
+	if bc.client == nil {
+		return nil, errors.New("gRPC client not initialized")
+	}
 	req := &proto.TokenRequest{
 		MintAddress:    mint,
 		CreatorAddress: creator,
