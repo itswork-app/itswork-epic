@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"cloud.google.com/go/pubsub" //nolint:staticcheck
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/rs/zerolog/log"
 )
 
 type Publisher struct {
 	client      *pubsub.Client
-	topic       *pubsub.Topic
+	topicPub    *pubsub.Publisher
 	PublishChan chan []byte
 	wg          sync.WaitGroup
 	ctx         context.Context
@@ -32,31 +32,31 @@ func NewPublisher() *Publisher {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create PubSub Client
+	// Init PubSub Client (Credential ditarik native dari Auth Provider GCP Run)
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create PubSub client (Skipping publish externally)")
+		log.Error().Err(err).Msg("Failed to create PubSub client")
 	}
 
-	var topic *pubsub.Topic
+	var topicPub *pubsub.Publisher
 	if client != nil {
-		topic = client.Topic(topicID)
+		topicPub = client.Publisher(topicID)
 
-		// Concurrency Optimization for Low Latency
-		topic.PublishSettings.DelayThreshold = 50 * time.Millisecond
-		topic.PublishSettings.CountThreshold = 100
-		topic.PublishSettings.ByteThreshold = 1e6
+		// Concurrency Optimization for Low Latency High Throughput
+		topicPub.PublishSettings.DelayThreshold = 50 * time.Millisecond
+		topicPub.PublishSettings.CountThreshold = 100
+		topicPub.PublishSettings.ByteThreshold = 1e6
 	}
 
 	pub := &Publisher{
 		client:      client,
-		topic:       topic,
+		topicPub:    topicPub,
 		PublishChan: make(chan []byte, 10000), // Buffered channel prevents HTTP handler blocking
 		ctx:         ctx,
 		cancel:      cancel,
 	}
 
-	pub.StartWorkers(5) // High concurrency setup: 5 dedicated background workers
+	pub.StartWorkers(5) // High concurrency setup: 5 dedicated background workers siap tempur
 
 	return pub
 }
@@ -76,14 +76,13 @@ func (p *Publisher) worker(id int) {
 		case <-p.ctx.Done():
 			return
 		case data := <-p.PublishChan:
-			if p.topic == nil {
-				// Fallback state if PubSub is disabled (e.g., local dev without credentials)
+			if p.topicPub == nil {
 				log.Debug().Msg("PubSub topic nil, message dropped")
 				continue
 			}
 
-			// Asynchronous Non-blocking Publish
-			res := p.topic.Publish(p.ctx, &pubsub.Message{
+			// Asynchronous Non-blocking Publish ke Google Cloud
+			res := p.topicPub.Publish(p.ctx, &pubsub.Message{
 				Data: data,
 			})
 
@@ -94,7 +93,7 @@ func (p *Publisher) worker(id int) {
 
 				_, err := r.Get(ctx)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to publish message to PubSub - retry mechanism could trigger here")
+					log.Error().Err(err).Msg("Failed to publish message to PubSub - triggering fallback logging")
 				}
 			}(res)
 		}
@@ -105,8 +104,8 @@ func (p *Publisher) Shutdown() {
 	log.Info().Msg("Initiating Publisher graceful shutdown...")
 	p.cancel()
 	p.wg.Wait()
-	if p.topic != nil {
-		p.topic.Stop() // Flushes remaining messages gracefully
+	if p.topicPub != nil {
+		p.topicPub.Stop() // Flushes remaining messages gracefully
 	}
 	if p.client != nil {
 		p.client.Close()
