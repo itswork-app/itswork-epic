@@ -26,7 +26,9 @@ func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdi
 	}
 
 	// ALWAYS Rollback if any error occurs; No-op if already committed
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	// Stage 1: UPSERT Wallet and retrieve UUID
 	var creatorID string
