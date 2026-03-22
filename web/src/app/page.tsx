@@ -23,16 +23,16 @@ export default function Home() {
            </div>
            
            {/* Elite Typography Heading */}
-           <h1 className="text-5xl sm:text-6xl md:text-[5.5rem] font-heading font-black tracking-tight leading-[1.05] drop-shadow-2xl">
+           <h1 className="text-5xl sm:text-7xl md:text-[6rem] font-heading font-black tracking-tight leading-[1.05] drop-shadow-2xl">
              <span className="text-white/90">ItsWork<span className="text-blue-500">.</span></span>
              <br />
-             <span className="bg-linear-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">Solana Token Intelligence</span>
+             <span className="bg-linear-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">Deep Token Intelligence</span>
            </h1>
            
            {/* Subtitle */}
            <p className="text-xl sm:text-2xl text-slate-400/90 max-w-3xl mx-auto font-sans font-light leading-relaxed tracking-wide">
-             Submit a Solana mint address for real-time <span className="text-white font-medium">deep AI auditing</span>. <br className="hidden sm:block"/>
-             Detect rugs, hidden vulnerabilities, and verify trust in milliseconds.
+             <strong className="text-white font-medium">Audit before you ape.</strong> Submit a Solana mint address for real-time AI analysis. <br className="hidden sm:block"/>
+             Detect rugs, honeypots, and hidden vulnerabilities before they drain your wallet.
            </p>
         </div>
         
