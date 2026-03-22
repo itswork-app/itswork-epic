@@ -57,7 +57,7 @@ func TestRunMain_Signal(t *testing.T) {
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		p, _ := os.FindProcess(os.Getpid())
-		p.Signal(syscall.SIGINT)
+		p.Signal(syscall.SIGINT) // nolint:errcheck
 	}()
 
 	err := RunMain(AppOptions{DB: db})
