@@ -3,19 +3,24 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"itswork.app/api/proto"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
 
 // TokenRepository handles database operations for token analysis
 type TokenRepository struct {
-	db *sql.DB
+	db    *sql.DB
+	redis *redis.Client
 }
 
 // NewTokenRepository creates a new instance of TokenRepository
-func NewTokenRepository(db *sql.DB) *TokenRepository {
-	return &TokenRepository{db: db}
+func NewTokenRepository(db *sql.DB, rdb *redis.Client) *TokenRepository {
+	return &TokenRepository{db: db, redis: rdb}
 }
 
 // SaveAnalysis persists the AI verdict for a token using a nested transaction (Wallets + TokenAnalysis)
@@ -67,4 +72,62 @@ func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdi
 
 	log.Debug().Str("mint", mint).Msg("Atomic transaction successful: Wallet and Analysis persisted")
 	return nil
+}
+
+// GetAnalysis retrieves the token verdict utilizing a Look-Aside Caching Strategy with Upstash Redis
+func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string) (*proto.VerdictResponse, error) {
+	cacheKey := fmt.Sprintf("token_verdict:%s", mint)
+
+	// 1. Cache Check (Look-Aside)
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, cacheKey).Result()
+		if err == nil {
+			var resp proto.VerdictResponse
+			if unmarshalErr := json.Unmarshal([]byte(val), &resp); unmarshalErr == nil {
+				log.Debug().Str("mint", mint).Msg("Cache Hit: Served Verdict from Redis")
+				return &resp, nil
+			}
+			log.Warn().Err(err).Msg("Failed to unmarshal cached verdict, falling back to database")
+		} else if err != redis.Nil {
+			log.Warn().Err(err).Msg("Redis GET error, falling back to database")
+		}
+	}
+
+	// 2. Cache Miss: Query Database
+	query := `
+		SELECT verdict, rug_score
+		FROM token_analysis
+		WHERE mint_address = $1
+	`
+	var verdict string
+	var score int32
+
+	err := r.db.QueryRowContext(ctx, query, mint).Scan(&verdict, &score)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("analysis not found for mint: %s", mint)
+		}
+		log.Error().Err(err).Str("mint", mint).Msg("Database query failed")
+		return nil, err
+	}
+
+	resp := &proto.VerdictResponse{
+		Score:   score,
+		Verdict: verdict,
+	}
+
+	// 3. Cache Miss Recovery: Store result in Redis configured with 5-minute TTL
+	if r.redis != nil {
+		data, marshalErr := json.Marshal(resp)
+		if marshalErr == nil {
+			err = r.redis.Set(ctx, cacheKey, data, 5*time.Minute).Err()
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to cache verdict to Redis")
+			} else {
+				log.Debug().Str("mint", mint).Msg("Cache Miss: Fetched from DB and cached outcome to Redis")
+			}
+		}
+	}
+
+	return resp, nil
 }
