@@ -1,0 +1,55 @@
+name: CI Police Gate - Master Blueprint Compliance
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  blueprint-police:
+    name: Blueprint Compliance & Governance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+
+      - name: Run Tests
+        run: go test -v ./...
+
+      - name: Run GolangCI-Lint
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          $(go env GOPATH)/bin/golangci-lint run ./...
+
+      - name: 👮 Blueprint Check (PR Description)
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "Checking PR description for Master Blueprint compliance..."
+          if ! echo "$PR_BODY" | grep -iq "Master Blueprint Read & Verified"; then
+            echo "::error::PR description MUST contain 'Master Blueprint Read & Verified'. Blueprint rejected."
+            exit 1
+          fi
+
+      - name: 🛡️ Stateless Enforcement (Disk I/O Check)
+        run: |
+          echo "Auditing internal/ingestor/ for forbidden Disk I/O functions..."
+          if grep -rn -E "os\.Create|os\.WriteFile|ioutil\.WriteFile" internal/ingestor/; then
+            echo "::error::Stateless Rule Violation! Non-ephemeral Disk I/O functions found in ingestor logic. All logic must be stateless."
+            exit 1
+          fi
+          echo "Stateless check passed."
+
+      - name: 📜 gRPC Contract Sync Verification
+        run: |
+          echo "Verifying /api/proto/CONTRACTS.proto against .project/CONTRACTS.proto..."
+          if ! cmp -s .project/CONTRACTS.proto api/proto/CONTRACTS.proto; then
+            echo "::error::gRPC Contract Drift Detected! /api/proto/ does not match .project/ Source of Truth."
+            exit 1
+          fi
+          echo "gRPC Contracts are synced."
