@@ -18,6 +18,13 @@ import (
 	"itswork.app/internal/repository"
 	"itswork.app/pkg/cache"
 	"itswork.app/pkg/database"
+
+	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
 type App struct {
@@ -61,6 +68,9 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 
 	repo := repository.NewTokenRepository(db, redisClient)
 	pub := ingestor.NewPublisher()
+
+	// Initialize Observability (Sentry & OTel)
+	initTelemetry()
 
 	brainClient, err := processor.NewBrainClient()
 	if err != nil {
@@ -113,6 +123,47 @@ func (a *App) Shutdown(ctx context.Context) {
 		a.DB.Close()
 	}
 	a.Pub.Shutdown()
+
+	// Flush Telemetry
+	sentry.Flush(2 * time.Second)
+	log.Info().Msg("Telemetry flushed")
+}
+
+func initTelemetry() {
+	// 1. Sentry Initialization
+	dsn := os.Getenv("SENTRY_DSN")
+	if dsn != "" {
+		err := sentry.Init(sentry.ClientOptions{
+			Dsn:              dsn,
+			EnableTracing:    true,
+			TracesSampleRate: 1.0,
+			Environment:      os.Getenv("ENV"),
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("Sentry init failed")
+		} else {
+			log.Info().Msg("Sentry initialized successfully")
+		}
+	} else {
+		log.Warn().Msg("SENTRY_DSN not set, skipping Sentry init")
+	}
+
+	// 2. OpenTelemetry (Stdout for now, easily swappable to OTLP)
+	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to initialize OTel stdout exporter")
+		return
+	}
+
+	tp := trace.NewTracerProvider(
+		trace.WithBatcher(exporter),
+		trace.WithResource(resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String("itswork-ingestor"),
+		)),
+	)
+	otel.SetTracerProvider(tp)
+	log.Info().Msg("OpenTelemetry Tracer Provider initialized (Stdout)")
 }
 
 func RunMain(opts ...AppOptions) error {

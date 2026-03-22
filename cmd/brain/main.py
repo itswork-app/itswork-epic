@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import sentry_sdk
 
 # Ensure the root directory is accessible so packages like 'api' and 'internal' can be imported natively
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -15,6 +16,17 @@ from internal.brain.services import IntelligenceService
 async def serve() -> None:
     # Structured Logging Format for Python matching standard logging outputs
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+    # 1. Sentry Initialization
+    dsn = os.getenv("SENTRY_DSN")
+    if dsn:
+        sentry_sdk.init(
+            dsn=dsn,
+            traces_sample_rate=1.0,
+            profiles_sample_rate=1.0,
+            environment=os.getenv("ENV", "development"),
+        )
+        logging.info("Sentry initialized for Python AI Brain")
 
     # Initialize high performance asynchronous gRPC server
     server = grpc.aio.server()
