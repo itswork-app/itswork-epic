@@ -16,6 +16,7 @@ import (
 	"itswork.app/internal/ingestor"
 	"itswork.app/internal/processor"
 	"itswork.app/internal/repository"
+	"itswork.app/pkg/cache"
 	"itswork.app/pkg/database"
 )
 
@@ -53,7 +54,12 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 		}
 	}
 
-	repo := repository.NewTokenRepository(db)
+	redisClient, err := cache.InitRedis()
+	if err != nil {
+		log.Warn().Err(err).Msg("Redis init failed - functioning without cache if expected")
+	}
+
+	repo := repository.NewTokenRepository(db, redisClient)
 	pub := ingestor.NewPublisher()
 
 	brainClient, err := processor.NewBrainClient()
@@ -69,7 +75,7 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 		sub = processor.NewSubscriber(brainClient, repo, nil)
 	}
 
-	router := ingestor.SetupRouter(pub)
+	router := ingestor.SetupRouter(pub, repo)
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: router,
