@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package itswork.intelligence;
+
+service IntelligenceService {
+  rpc AnalyzeToken (TokenRequest) returns (VerdictResponse);
+}
+
+message TokenRequest { 
+  string mint_address = 1; 
+  string creator_address = 2; 
+}
+
+message VerdictResponse { 
+  int32 score = 1; 
+  string verdict = 2; 
+  string reason = 3; 
+}
