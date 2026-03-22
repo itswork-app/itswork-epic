@@ -36,6 +36,17 @@ jobs:
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
           $(go env GOPATH)/bin/golangci-lint run ./...
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Run Ruff (Python Linter)
+        run: |
+          pip install ruff
+          ruff check .
+          ruff format --check .
+
       - name: 👮 Blueprint Check (PR Description)
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
