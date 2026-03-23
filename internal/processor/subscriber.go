@@ -13,7 +13,10 @@ import (
 
 // Brainger defines the interface for AI analysis calls
 type Brainger interface {
-	AnalyzeToken(ctx context.Context, mint, creator string, walletAge int32, isLpBurned bool, concentration float32, fundingPassed bool) (*proto.VerdictResponse, error)
+	AnalyzeToken(
+		ctx context.Context, mint, creator string, walletAge int32,
+		isLpBurned bool, concentration float32, fundingPassed bool,
+	) (*proto.VerdictResponse, error)
 }
 
 // VaultRepository defines the interface for data persistence
@@ -130,7 +133,10 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 	fundingPassed := true // Default safe
 
 	// Invoke gRPC AnalyzeToken to Python Brain
-	resp, err := s.brainClient.AnalyzeToken(ctx, payload.MintAddress, payload.CreatorAddress, walletAge, isLpBurned, concentration, fundingPassed)
+	resp, err := s.brainClient.AnalyzeToken(
+		ctx, payload.MintAddress, payload.CreatorAddress,
+		walletAge, isLpBurned, concentration, fundingPassed,
+	)
 	if err != nil {
 		log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Intelligence Analysis failed")
 		msg.Nack() // Requeue for retry if gRPC is down
