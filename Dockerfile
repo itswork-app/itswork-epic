@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install system dependencies (needed for some CGO parts if any, though we aim for static)
 RUN apk add --no-cache git ca-certificates
