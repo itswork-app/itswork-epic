@@ -55,21 +55,23 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">itswork.app/cmd/ingestor/main.go (87.3%)</option>
+				<option value="file0">itswork.app/cmd/ingestor/main.go (0.0%)</option>
 				
-				<option value="file1">itswork.app/internal/ingestor/handler.go (100.0%)</option>
+				<option value="file1">itswork.app/internal/app/app.go (91.4%)</option>
 				
-				<option value="file2">itswork.app/internal/ingestor/publisher.go (70.5%)</option>
+				<option value="file2">itswork.app/internal/ingestor/handler.go (100.0%)</option>
 				
-				<option value="file3">itswork.app/internal/processor/grpc_client.go (80.0%)</option>
+				<option value="file3">itswork.app/internal/ingestor/publisher.go (70.5%)</option>
 				
-				<option value="file4">itswork.app/internal/processor/subscriber.go (81.6%)</option>
+				<option value="file4">itswork.app/internal/processor/grpc_client.go (80.0%)</option>
 				
-				<option value="file5">itswork.app/internal/repository/token_analysis.go (94.1%)</option>
+				<option value="file5">itswork.app/internal/processor/subscriber.go (81.6%)</option>
 				
-				<option value="file6">itswork.app/pkg/cache/redis.go (100.0%)</option>
+				<option value="file6">itswork.app/internal/repository/token_analysis.go (94.1%)</option>
 				
-				<option value="file7">itswork.app/pkg/database/db.go (80.0%)</option>
+				<option value="file7">itswork.app/pkg/cache/redis.go (100.0%)</option>
+				
+				<option value="file8">itswork.app/pkg/database/db.go (80.0%)</option>
 				
 				</select>
 			</div>
@@ -84,6 +86,21 @@
 		<div id="content">
 		
 		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "log"
+
+        "itswork.app/internal/app"
+)
+
+func main() <span class="cov0" title="0">{
+        if err := app.RunMain(); err != nil </span><span class="cov0" title="0">{
+                log.Fatal("Application failed:", err)
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package app
 
 import (
         "context"
@@ -103,6 +120,13 @@ import (
         "itswork.app/internal/repository"
         "itswork.app/pkg/cache"
         "itswork.app/pkg/database"
+
+        "github.com/getsentry/sentry-go"
+        "go.opentelemetry.io/otel"
+        "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+        "go.opentelemetry.io/otel/sdk/resource"
+        "go.opentelemetry.io/otel/sdk/trace"
+        semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
 type App struct {
@@ -124,7 +148,7 @@ func SetupApp(opts ...AppOptions) (*App, error) <span class="cov8" title="1">{
         log.Logger = log.Output(os.Stdout)
 
         port := os.Getenv("PORT")
-        if port == "" </span><span class="cov0" title="0">{
+        if port == "" </span><span class="cov8" title="1">{
                 port = "8080"
         }</span>
 
@@ -147,9 +171,11 @@ func SetupApp(opts ...AppOptions) (*App, error) <span class="cov8" title="1">{
         <span class="cov8" title="1">repo := repository.NewTokenRepository(db, redisClient)
         pub := ingestor.NewPublisher()
 
+        // Initialize Observability (Sentry &amp; OTel)
+        initTelemetry()
+
         brainClient, err := processor.NewBrainClient()
         if err != nil </span><span class="cov0" title="0">{
-                // Log error but continue to cover initialization sequence in tests if possible
                 log.Warn().Err(err).Msg("gRPC Brain Client init failed - normal in restricted test envs")
                 brainClient = &amp;processor.BrainClient{}
         }</span>
@@ -182,7 +208,7 @@ func (a *App) Run() <span class="cov8" title="1">{
 
         go func() </span><span class="cov8" title="1">{
                 log.Info().Str("port", a.Port).Msg("Server listening on port")
-                if err := a.Server.ListenAndServe(); err != nil &amp;&amp; !errors.Is(err, http.ErrServerClosed) </span><span class="cov0" title="0">{
+                if err := a.Server.ListenAndServe(); err != nil &amp;&amp; !errors.Is(err, http.ErrServerClosed) </span><span class="cov8" title="1">{
                         log.Error().Err(err).Msg("Failed to listen and serve")
                 }</span>
         }()
@@ -198,18 +224,53 @@ func (a *App) Shutdown(ctx context.Context) <span class="cov8" title="1">{
         if a.DB != nil </span><span class="cov8" title="1">{
                 a.DB.Close()
         }</span>
-        <span class="cov8" title="1">a.Pub.Shutdown()</span>
+        <span class="cov8" title="1">a.Pub.Shutdown()
+
+        // Flush Telemetry
+        sentry.Flush(2 * time.Second)
+        log.Info().Msg("Telemetry flushed")</span>
 }
 
-func main() <span class="cov0" title="0">{
-        if err := RunMain(); err != nil </span><span class="cov0" title="0">{
-                log.Fatal().Err(err).Msg("Application failed")
+func initTelemetry() <span class="cov8" title="1">{
+        // 1. Sentry Initialization
+        dsn := os.Getenv("SENTRY_DSN")
+        if dsn != "" </span><span class="cov8" title="1">{
+                err := sentry.Init(sentry.ClientOptions{
+                        Dsn:              dsn,
+                        EnableTracing:    true,
+                        TracesSampleRate: 1.0,
+                        Environment:      os.Getenv("ENV"),
+                })
+                if err != nil </span><span class="cov8" title="1">{
+                        log.Error().Err(err).Msg("Sentry init failed")
+                }</span> else<span class="cov8" title="1"> {
+                        log.Info().Msg("Sentry initialized successfully")
+                }</span>
+        } else<span class="cov8" title="1"> {
+                log.Warn().Msg("SENTRY_DSN not set, skipping Sentry init")
         }</span>
+
+        // 2. OpenTelemetry (Stdout for now, easily swappable to OTLP)
+        <span class="cov8" title="1">exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+        if err != nil </span><span class="cov0" title="0">{
+                log.Warn().Err(err).Msg("Failed to initialize OTel stdout exporter")
+                return
+        }</span>
+
+        <span class="cov8" title="1">tp := trace.NewTracerProvider(
+                trace.WithBatcher(exporter),
+                trace.WithResource(resource.NewWithAttributes(
+                        semconv.SchemaURL,
+                        semconv.ServiceNameKey.String("itswork-ingestor"),
+                )),
+        )
+        otel.SetTracerProvider(tp)
+        log.Info().Msg("OpenTelemetry Tracer Provider initialized (Stdout)")</span>
 }
 
 func RunMain(opts ...AppOptions) error <span class="cov8" title="1">{
         app, err := SetupApp(opts...)
-        if err != nil </span><span class="cov8" title="1">{
+        if err != nil </span><span class="cov0" title="0">{
                 return err
         }</span>
 
@@ -217,9 +278,6 @@ func RunMain(opts ...AppOptions) error <span class="cov8" title="1">{
 
         quit := make(chan os.Signal, 1)
         signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-        // In real main, this blocks. In tests, we can skip it if we want,
-        // but RunMain should normally block or return.
-        // For testing purposes, we'll allow an early exit if SIGUSR1 is sent or similar.
         &lt;-quit
 
         ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -231,7 +289,7 @@ func RunMain(opts ...AppOptions) error <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file1" style="display: none">package ingestor
+		<pre class="file" id="file2" style="display: none">package ingestor
 
 import (
         "net/http"
@@ -240,6 +298,9 @@ import (
         "github.com/rs/zerolog/log"
 
         "itswork.app/internal/repository"
+
+        sentrygin "github.com/getsentry/sentry-go/gin"
+        "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 // SetupRouter initializes the Gin engine and creates the routes.
@@ -248,6 +309,14 @@ func SetupRouter(pub *Publisher, repo *repository.TokenRepository) *gin.Engine <
 
         r := gin.New()
         r.Use(gin.Recovery())
+
+        // Sentry Middleware (Captures panics and sends to Sentry)
+        r.Use(sentrygin.New(sentrygin.Options{
+                Repanic: true,
+        }))
+
+        // OpenTelemetry Middleware (Distributed Tracing)
+        r.Use(otelgin.Middleware("itswork-ingestor"))
 
         r.POST("/webhook/helius", func(c *gin.Context) </span><span class="cov8" title="1">{
                 HeliusWebhookHandler(c, pub)
@@ -308,7 +377,7 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository) <spa
 }
 </pre>
 		
-		<pre class="file" id="file2" style="display: none">package ingestor
+		<pre class="file" id="file3" style="display: none">package ingestor
 
 import (
         "context"
@@ -424,7 +493,7 @@ func (p *Publisher) Shutdown() <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file3" style="display: none">package processor
+		<pre class="file" id="file4" style="display: none">package processor
 
 import (
         "context"
@@ -492,7 +561,7 @@ func (bc *BrainClient) Close() <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file4" style="display: none">package processor
+		<pre class="file" id="file5" style="display: none">package processor
 
 import (
         "context"
@@ -641,7 +710,7 @@ func (s *Subscriber) Shutdown() <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file5" style="display: none">package repository
+		<pre class="file" id="file6" style="display: none">package repository
 
 import (
         "context"
@@ -777,7 +846,7 @@ func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string) (*proto.
 }
 </pre>
 		
-		<pre class="file" id="file6" style="display: none">package cache
+		<pre class="file" id="file7" style="display: none">package cache
 
 import (
         "context"
@@ -813,7 +882,7 @@ func InitRedis() (*redis.Client, error) <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file7" style="display: none">package database
+		<pre class="file" id="file8" style="display: none">package database
 
 import (
         "database/sql"

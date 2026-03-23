@@ -7,12 +7,11 @@
 package proto
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -23,11 +22,15 @@ const (
 )
 
 type TokenRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	MintAddress    string                 `protobuf:"bytes,1,opt,name=mint_address,json=mintAddress,proto3" json:"mint_address,omitempty"`
-	CreatorAddress string                 `protobuf:"bytes,2,opt,name=creator_address,json=creatorAddress,proto3" json:"creator_address,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state                            protoimpl.MessageState `protogen:"open.v1"`
+	MintAddress                      string                 `protobuf:"bytes,1,opt,name=mint_address,json=mintAddress,proto3" json:"mint_address,omitempty"`
+	CreatorAddress                   string                 `protobuf:"bytes,2,opt,name=creator_address,json=creatorAddress,proto3" json:"creator_address,omitempty"`
+	CreatorWalletAgeHours            int32                  `protobuf:"varint,3,opt,name=creator_wallet_age_hours,json=creatorWalletAgeHours,proto3" json:"creator_wallet_age_hours,omitempty"`
+	IsLpBurned                       bool                   `protobuf:"varint,4,opt,name=is_lp_burned,json=isLpBurned,proto3" json:"is_lp_burned,omitempty"`
+	Top_10HolderConcentrationPercent float32                `protobuf:"fixed32,5,opt,name=top_10_holder_concentration_percent,json=top10HolderConcentrationPercent,proto3" json:"top_10_holder_concentration_percent,omitempty"`
+	FundingSourceCheckPassed         bool                   `protobuf:"varint,6,opt,name=funding_source_check_passed,json=fundingSourceCheckPassed,proto3" json:"funding_source_check_passed,omitempty"`
+	unknownFields                    protoimpl.UnknownFields
+	sizeCache                        protoimpl.SizeCache
 }
 
 func (x *TokenRequest) Reset() {
@@ -72,6 +75,34 @@ func (x *TokenRequest) GetCreatorAddress() string {
 		return x.CreatorAddress
 	}
 	return ""
+}
+
+func (x *TokenRequest) GetCreatorWalletAgeHours() int32 {
+	if x != nil {
+		return x.CreatorWalletAgeHours
+	}
+	return 0
+}
+
+func (x *TokenRequest) GetIsLpBurned() bool {
+	if x != nil {
+		return x.IsLpBurned
+	}
+	return false
+}
+
+func (x *TokenRequest) GetTop_10HolderConcentrationPercent() float32 {
+	if x != nil {
+		return x.Top_10HolderConcentrationPercent
+	}
+	return 0
+}
+
+func (x *TokenRequest) GetFundingSourceCheckPassed() bool {
+	if x != nil {
+		return x.FundingSourceCheckPassed
+	}
+	return false
 }
 
 type VerdictResponse struct {
@@ -138,10 +169,15 @@ var File_api_proto_CONTRACTS_proto protoreflect.FileDescriptor
 
 const file_api_proto_CONTRACTS_proto_rawDesc = "" +
 	"\n" +
-	"\x19api/proto/CONTRACTS.proto\x12\x14itswork.intelligence\"Z\n" +
+	"\x19api/proto/CONTRACTS.proto\x12\x14itswork.intelligence\"\xc2\x02\n" +
 	"\fTokenRequest\x12!\n" +
 	"\fmint_address\x18\x01 \x01(\tR\vmintAddress\x12'\n" +
-	"\x0fcreator_address\x18\x02 \x01(\tR\x0ecreatorAddress\"Y\n" +
+	"\x0fcreator_address\x18\x02 \x01(\tR\x0ecreatorAddress\x127\n" +
+	"\x18creator_wallet_age_hours\x18\x03 \x01(\x05R\x15creatorWalletAgeHours\x12 \n" +
+	"\fis_lp_burned\x18\x04 \x01(\bR\n" +
+	"isLpBurned\x12L\n" +
+	"#top_10_holder_concentration_percent\x18\x05 \x01(\x02R\x1ftop10HolderConcentrationPercent\x12=\n" +
+	"\x1bfunding_source_check_passed\x18\x06 \x01(\bR\x18fundingSourceCheckPassed\"Y\n" +
 	"\x0fVerdictResponse\x12\x14\n" +
 	"\x05score\x18\x01 \x01(\x05R\x05score\x12\x18\n" +
 	"\averdict\x18\x02 \x01(\tR\averdict\x12\x16\n" +
