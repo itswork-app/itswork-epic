@@ -52,8 +52,21 @@ func TestEnricher_Enrich_SuccessMock(t *testing.T) {
 		if method == "getSignaturesForAddress" {
 			_, _ = w.Write([]byte(`{
 				"result": [
-					{"blockTime": 1700000000}
+					{"signature": "sig123", "blockTime": 1700000000}
 				],
+				"error": null
+			}`))
+		} else if method == "getTransaction" {
+			_, _ = w.Write([]byte(`{
+				"result": {
+					"transaction": {
+						"message": {
+							"accountKeys": [
+								{"pubkey": "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9", "signer": true}
+							]
+						}
+					}
+				},
 				"error": null
 			}`))
 		} else if method == "getAsset" {
