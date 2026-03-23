@@ -1,0 +1,24 @@
+mode: set
+itswork.app/internal/pay/service.go:28.34,35.2 1 1
+itswork.app/internal/pay/service.go:38.71,51.2 7 1
+itswork.app/internal/pay/service.go:54.93,55.26 1 1
+itswork.app/internal/pay/service.go:55.26,57.3 1 1
+itswork.app/internal/pay/service.go:59.2,74.16 5 1
+itswork.app/internal/pay/service.go:74.16,76.3 1 0
+itswork.app/internal/pay/service.go:77.2,80.16 3 1
+itswork.app/internal/pay/service.go:80.16,83.3 2 1
+itswork.app/internal/pay/service.go:84.2,93.79 3 1
+itswork.app/internal/pay/service.go:93.79,96.3 2 1
+itswork.app/internal/pay/service.go:98.2,98.29 1 1
+itswork.app/internal/pay/service.go:98.29,100.3 1 1
+itswork.app/internal/pay/service.go:102.2,129.16 6 1
+itswork.app/internal/pay/service.go:129.16,131.3 1 0
+itswork.app/internal/pay/service.go:132.2,135.16 3 1
+itswork.app/internal/pay/service.go:135.16,138.3 2 0
+itswork.app/internal/pay/service.go:139.2,141.80 2 1
+itswork.app/internal/pay/service.go:141.80,144.3 2 0
+itswork.app/internal/pay/service.go:146.2,146.25 1 1
+itswork.app/internal/pay/service.go:146.25,148.3 1 1
+itswork.app/internal/pay/service.go:150.2,150.34 1 1
+itswork.app/internal/pay/service.go:150.34,153.3 2 1
+itswork.app/internal/pay/service.go:155.2,157.18 3 1

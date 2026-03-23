@@ -77,6 +77,21 @@ func TestVerifyPaymentHandler_Success(t *testing.T) {
 	payRepo := repository.NewPaymentRepository(db, nil)
 	payService := pay.NewPayService()
 
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		method, _ := req["method"].(string)
+
+		if method == "getSignaturesForAddress" {
+			_, _ = w.Write([]byte(`{"result": [{"signature": "sig123", "err": null}], "error": null}`))
+		} else if method == "getTransaction" {
+			_, _ = w.Write([]byte(`{"result": {"meta": {"err": null}}, "error": null}`))
+		}
+	}))
+	defer ts.Close()
+	payService.BaseURL = ts.URL
+
 	// VerifyTransaction currently returns true, so it will call UpdatePaymentStatus
 	mock.ExpectQuery("UPDATE payments").
 		WithArgs("success", "ref123").
@@ -137,7 +152,104 @@ func TestVerifyPaymentHandler_DBError(t *testing.T) {
 	payRepo := repository.NewPaymentRepository(db, nil)
 	payService := pay.NewPayService()
 
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		method, _ := req["method"].(string)
+
+		if method == "getSignaturesForAddress" {
+			_, _ = w.Write([]byte(`{"result": [{"signature": "sig123", "err": null}], "error": null}`))
+		} else if method == "getTransaction" {
+			_, _ = w.Write([]byte(`{"result": {"meta": {"err": null}}, "error": null}`))
+		}
+	}))
+	defer ts.Close()
+	payService.BaseURL = ts.URL
+
 	mock.ExpectQuery("UPDATE payments").
+		WillReturnError(assert.AnError)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/pay/verify/ref123", nil)
+	c.Params = []gin.Param{{Key: "reference", Value: "ref123"}}
+
+	VerifyPaymentHandler(c, payService, payRepo)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestVerifyPaymentHandler_ServiceError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	os.Setenv("HELIUS_API_KEY", "") // this will cause PayService.VerifyTransaction to return an error
+
+	payService := pay.NewPayService()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/pay/verify/ref123", nil)
+	c.Params = []gin.Param{{Key: "reference", Value: "ref123"}}
+
+	VerifyPaymentHandler(c, payService, nil)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestVerifyPaymentHandler_Pending(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	os.Setenv("HELIUS_API_KEY", "test-key")
+
+	payService := pay.NewPayService()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		method, _ := req["method"].(string)
+
+		if method == "getSignaturesForAddress" {
+			_, _ = w.Write([]byte(`{"result": [], "error": null}`)) // empty signatures returns false, nil
+		}
+	}))
+	defer ts.Close()
+	payService.BaseURL = ts.URL
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/pay/verify/ref123", nil)
+	c.Params = []gin.Param{{Key: "reference", Value: "ref123"}}
+
+	VerifyPaymentHandler(c, payService, nil)
+	assert.Equal(t, http.StatusAccepted, w.Code)
+}
+
+func TestVerifyPaymentHandler_UpdateDBError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	os.Setenv("HELIUS_API_KEY", "test-key")
+
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	payRepo := repository.NewPaymentRepository(db, nil)
+	payService := pay.NewPayService()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		method, _ := req["method"].(string)
+
+		if method == "getSignaturesForAddress" {
+			_, _ = w.Write([]byte(`{"result": [{"signature": "sig123", "err": null}], "error": null}`))
+		} else if method == "getTransaction" {
+			_, _ = w.Write([]byte(`{"result": {"meta": {"err": null}}, "error": null}`))
+		}
+	}))
+	defer ts.Close()
+	payService.BaseURL = ts.URL
+
+	mock.ExpectQuery("UPDATE payments").
+		WithArgs("success", "ref123").
 		WillReturnError(assert.AnError)
 
 	w := httptest.NewRecorder()

@@ -7,9 +7,14 @@ import (
 
 	"cloud.google.com/go/pubsub/v2" // Standardized to use v2 across project
 	"github.com/rs/zerolog/log"
+	"google.golang.org/api/option"
 
 	"itswork.app/api/proto"
 )
+
+var newPubsubClient = func(ctx context.Context, projectID string, opts ...option.ClientOption) (*pubsub.Client, error) {
+	return pubsub.NewClient(ctx, projectID, opts...)
+}
 
 // Brainger defines the interface for AI analysis calls
 type Brainger interface {
@@ -44,17 +49,19 @@ type Subscriber struct {
 	subscriber  PubSubSubscriber
 	brainClient Brainger
 	repo        VaultRepository
+	enricher    *Enricher
 	ctx         context.Context
 	cancel      context.CancelFunc
 }
 
-func NewSubscriber(brainClient Brainger, repo VaultRepository, subscriber PubSubSubscriber) *Subscriber {
+func NewSubscriber(brainClient Brainger, repo VaultRepository, subscriber PubSubSubscriber, enricher *Enricher) *Subscriber {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Subscriber{
 		subscriber:  subscriber,
 		brainClient: brainClient,
 		repo:        repo,
+		enricher:    enricher,
 		ctx:         ctx,
 		cancel:      cancel,
 	}
@@ -71,13 +78,20 @@ func InitSubscriber(brainClient Brainger, repo VaultRepository) (*Subscriber, er
 	}
 
 	ctx := context.Background()
-	client, err := pubsub.NewClient(ctx, projectID)
+	client, err := newPubsubClient(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
 
-	sub := client.Subscriber(subID)
-	s := NewSubscriber(brainClient, repo, sub)
+	apiKey := os.Getenv("HELIUS_API_KEY")
+	enricher := NewEnricher(apiKey)
+
+	var sub PubSubSubscriber
+	if client != nil {
+		sub = client.Subscriber(subID)
+	}
+
+	s := NewSubscriber(brainClient, repo, sub, enricher)
 	s.client = client
 	return s, nil
 }
@@ -115,6 +129,10 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 
 	log.Debug().Str("mint", payload.MintAddress).Msg("Processing token from Pub/Sub...")
 
+	// Enrich the payload with real on-chain data before sending to Brain
+	if s.enricher != nil {
+		_ = s.enricher.Enrich(ctx, &payload)
+	}
 	// Invoke gRPC AnalyzeToken to Python Brain with REAL data from Ingestor
 	resp, err := s.brainClient.AnalyzeToken(
 		ctx,

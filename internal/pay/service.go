@@ -1,10 +1,14 @@
 package pay
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -14,6 +18,11 @@ type PayService struct {
 	ProjectWallet string
 	ScanPrice     string // in SOL, e.g., "0.1"
 	HeliusAPIKey  string
+	BaseURL       string
+}
+
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second,
 }
 
 func NewPayService() *PayService {
@@ -21,6 +30,7 @@ func NewPayService() *PayService {
 		ProjectWallet: os.Getenv("PROJECT_WALLET_ADDRESS"),
 		ScanPrice:     os.Getenv("SCAN_PRICE_SOL"),
 		HeliusAPIKey:  os.Getenv("HELIUS_API_KEY"),
+		BaseURL:       "https://mainnet.helius-rpc.com",
 	}
 }
 
@@ -46,13 +56,103 @@ func (s *PayService) VerifyTransaction(ctx context.Context, reference string) (b
 		return false, fmt.Errorf("HELIUS_API_KEY not configured")
 	}
 
-	// Use Helius RPC to find signatures for the reference key
-	// Standard Solana Pay verification involves searching for the reference as a 'readonly' signer in a transaction
-	// For MVP: We mock success if API key is present until Helius SDK/Client is fully integrated
-	// In reality, this would be a JSON-RPC call to 'getSignaturesForAddress' with the reference key.
+	rpcURL := fmt.Sprintf("%s/?api-key=%s", s.BaseURL, s.HeliusAPIKey)
 
-	log.Printf("Verifying transaction on-chain for reference: %s", reference)
+	// Step 1: getSignaturesForAddress
+	sigReqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getSignaturesForAddress",
+		"params": []interface{}{
+			reference,
+			map[string]interface{}{"limit": 1},
+		},
+	}
 
-	// TODO: Implement real Helius RPC call using net/http
+	sigBytes, _ := json.Marshal(sigReqBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(sigBytes))
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Error().Err(err).Str("reference", reference).Msg("Helius getSignaturesForAddress RPC failed")
+		return false, nil // return false, nil to keep pending
+	}
+	defer resp.Body.Close()
+
+	var sigRes struct {
+		Result []struct {
+			Signature string      `json:"signature"`
+			Err       interface{} `json:"err"`
+		} `json:"result"`
+	}
+
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&sigRes); decodeErr != nil {
+		log.Error().Err(decodeErr).Msg("Failed to decode getSignaturesForAddress response")
+		return false, nil
+	}
+
+	if len(sigRes.Result) == 0 {
+		return false, nil // No transaction found yet
+	}
+
+	signature := sigRes.Result[0].Signature
+
+	// Step 2: getTransaction to verify finality and content
+	var txRes struct {
+		Result *struct {
+			Meta struct {
+				Err interface{} `json:"err"`
+			} `json:"meta"`
+		} `json:"result"`
+	}
+
+	txReqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getTransaction",
+		"params": []interface{}{
+			signature,
+			map[string]interface{}{
+				"encoding":                       "jsonParsed",
+				"commitment":                     "finalized",
+				"maxSupportedTransactionVersion": 0,
+			},
+		},
+	}
+
+	txBytes, _ := json.Marshal(txReqBody)
+	reqTx, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(txBytes))
+	if err != nil {
+		return false, err
+	}
+	reqTx.Header.Set("Content-Type", "application/json")
+
+	respTx, err := httpClient.Do(reqTx)
+	if err != nil {
+		log.Error().Err(err).Str("signature", signature).Msg("Helius getTransaction RPC failed")
+		return false, nil
+	}
+	defer respTx.Body.Close()
+
+	if decodeErr := json.NewDecoder(respTx.Body).Decode(&txRes); decodeErr != nil {
+		log.Error().Err(decodeErr).Msg("Failed to decode getTransaction response")
+		return false, nil
+	}
+
+	if txRes.Result == nil {
+		return false, nil // Transaction not yet finalized
+	}
+
+	if txRes.Result.Meta.Err != nil {
+		log.Warn().Str("signature", signature).Interface("err", txRes.Result.Meta.Err).Msg("Transaction failed on-chain")
+		return false, nil // Failed transaction, do not unlock
+	}
+
+	log.Info().Str("reference_key", reference).Str("signature", signature).Msg("Real On-Chain Payment Verified")
+	log.Info().Str("reference_key", reference).Str("signature", signature).Msg("Real On-Chain Payment Verified")
 	return true, nil
 }

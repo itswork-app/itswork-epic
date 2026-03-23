@@ -31,6 +31,29 @@ func TestSavePayment_Success(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestSavePayment_Error(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	payment := &Payment{
+		UserID:      "user123",
+		MintAddress: "mint456",
+		Reference:   "ref789",
+		AmountSol:   0.1,
+	}
+
+	mock.ExpectQuery("INSERT INTO payments").
+		WithArgs(payment.UserID, payment.MintAddress, payment.Reference, "pending", payment.AmountSol).
+		WillReturnError(assert.AnError)
+
+	err = repo.SavePayment(ctx, payment)
+	assert.Error(t, err)
+}
+
 func TestUpdatePaymentStatus_Success(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)

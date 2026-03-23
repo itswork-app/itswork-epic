@@ -38,9 +38,9 @@ itswork.app/internal/ingestor/pay_handler.go:60.2,61.16 2 1
 itswork.app/internal/ingestor/pay_handler.go:61.16,65.3 3 0
 itswork.app/internal/ingestor/pay_handler.go:67.2,67.13 1 1
 itswork.app/internal/ingestor/pay_handler.go:67.13,68.108 1 1
-itswork.app/internal/ingestor/pay_handler.go:68.108,70.4 1 1
-itswork.app/internal/ingestor/pay_handler.go:71.3,71.105 1 1
-itswork.app/internal/ingestor/pay_handler.go:72.8,74.3 1 0
+itswork.app/internal/ingestor/pay_handler.go:68.108,72.4 3 1
+itswork.app/internal/ingestor/pay_handler.go:73.3,73.105 1 1
+itswork.app/internal/ingestor/pay_handler.go:74.8,76.3 1 0
 itswork.app/internal/ingestor/publisher.go:22.32,26.21 3 1
 itswork.app/internal/ingestor/publisher.go:26.21,28.3 1 1
 itswork.app/internal/ingestor/publisher.go:29.2,29.19 1 1
