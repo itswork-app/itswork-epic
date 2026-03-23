@@ -1,22 +1,19 @@
-name: Deploy Backend to Cloud Run
+name: Deploy Python Brain to Cloud Run
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'cmd/**'
-      - 'internal/**'
-      - 'pkg/**'
-      - 'api/**'
-      - 'Dockerfile'
-      - 'go.mod'
-      - 'go.sum'
+      - 'cmd/brain/**'
+      - 'internal/brain/**'
+      - 'Dockerfile.brain'
+      - 'requirements.txt'
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: ${{ secrets.GCP_REGION }}
-  SERVICE_NAME: itswork-ingestor
+  SERVICE_NAME: itswork-brain
   REPO_NAME: cloud-run-source-deploy
 
 jobs:
@@ -46,7 +43,7 @@ jobs:
       - name: Build and Push Container
         run: |-
           IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
-          docker build -t "$IMAGE_TAG" .
+          docker build -f Dockerfile.brain -t "$IMAGE_TAG" .
           docker push "$IMAGE_TAG"
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
@@ -62,10 +59,8 @@ jobs:
             --allow-unauthenticated
             --max-instances=10
             --min-instances=0
-          # Secrets and Env variables can be managed here or in the GCP Console
           env_vars: |-
             ENV=production
           secrets: |-
             DATABASE_URL=neon-db-url:latest
-            REDIS_URL=redis-url:latest
-            SENTRY_DSN=sentry-dsn:latest
+            SENTRY_DSN=python-sentry-dsn:latest
