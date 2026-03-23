@@ -36,8 +36,8 @@ func (s *PayService) GetSolPriceUSD(ctx context.Context) float64 {
 		var jupResp JupiterPriceResponse
 		if decodeErr := json.NewDecoder(resp.Body).Decode(&jupResp); decodeErr == nil {
 			if solData, ok := jupResp.Data["SOL"]; ok {
-				price, err := strconv.ParseFloat(solData.Price, 64)
-				if err == nil && price > 0 {
+				price, parseErr := strconv.ParseFloat(solData.Price, 64)
+				if parseErr == nil && price > 0 {
 					// Update Redis cutoff
 					if s.Redis != nil {
 						s.Redis.Set(ctx, RedisPriceKey, solData.Price, 24*time.Hour)
