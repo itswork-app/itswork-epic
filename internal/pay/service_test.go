@@ -190,14 +190,14 @@ func TestGenerateBundlePaymentURL(t *testing.T) {
 	url, ref := s.GenerateBundlePaymentURL("user123", "BUNDLE_50")
 	assert.NotEmpty(t, url)
 	assert.NotEmpty(t, ref)
-	assert.Contains(t, url, "amount=4.5")
-	assert.Contains(t, url, "memo=BUNDLE%3ABUNDLE_50%3Auser123")
+	assert.Contains(t, url, "amount=0.4")
+	assert.Contains(t, url, "memo=BUNDLE%3ABUNDLE_50%3Auser123%3A"+ref)
 
 	// Test BUNDLE_100
 	url, ref = s.GenerateBundlePaymentURL("user123", "BUNDLE_100")
 	assert.NotEmpty(t, ref)
-	assert.Contains(t, url, "amount=8.0")
-	assert.Contains(t, url, "memo=BUNDLE%3ABUNDLE_100%3Auser123")
+	assert.Contains(t, url, "amount=0.7")
+	assert.Contains(t, url, "memo=BUNDLE%3ABUNDLE_100%3Auser123%3A"+ref)
 }
 
 func TestGenerateSubscriptionPaymentURL(t *testing.T) {
@@ -208,6 +208,6 @@ func TestGenerateSubscriptionPaymentURL(t *testing.T) {
 	url, ref := s.GenerateSubscriptionPaymentURL("user123", "SUB_MONTHLY_PRO")
 	assert.NotEmpty(t, url)
 	assert.NotEmpty(t, ref)
-	assert.Contains(t, url, "amount=25.0")
-	assert.Contains(t, url, "memo=SUBSCRIPTION%3ASUB_MONTHLY_PRO%3Auser123")
+	assert.Contains(t, url, "amount=0.25")
+	assert.Contains(t, url, "memo=SUBSCRIPTION%3ASUB_MONTHLY_PRO%3Auser123%3A"+ref)
 }
