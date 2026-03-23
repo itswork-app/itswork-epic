@@ -66,6 +66,7 @@ func CreateBundlePaymentHandler(c *gin.Context, payService *pay.PayService, payR
 	payURL, reference, amountStr := payService.GenerateBundlePaymentURL(c.Request.Context(), userID, bundleType)
 
 	// Save pending payment record to trigger fulfillment later
+
 	amount, _ := strconv.ParseFloat(amountStr, 64)
 
 	payment := &repository.Payment{
