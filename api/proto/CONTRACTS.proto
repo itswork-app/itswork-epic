@@ -11,6 +11,10 @@ service IntelligenceService {
 message TokenRequest { 
   string mint_address = 1; 
   string creator_address = 2; 
+  int32 creator_wallet_age_hours = 3;
+  bool is_lp_burned = 4;
+  float top_10_holder_concentration_percent = 5;
+  bool funding_source_check_passed = 6;
 }
 
 message VerdictResponse { 
