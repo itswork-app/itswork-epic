@@ -80,13 +80,13 @@ func TestVerifyPaymentHandler_Success(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		var req map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		method, _ := req["method"].(string)
-		
+
 		if method == "getSignaturesForAddress" {
-			w.Write([]byte(`{"result": [{"signature": "sig123", "err": null}], "error": null}`))
+			_, _ = w.Write([]byte(`{"result": [{"signature": "sig123", "err": null}], "error": null}`))
 		} else if method == "getTransaction" {
-			w.Write([]byte(`{"result": {"meta": {"err": null}}, "error": null}`))
+			_, _ = w.Write([]byte(`{"result": {"meta": {"err": null}}, "error": null}`))
 		}
 	}))
 	defer ts.Close()
@@ -157,7 +157,7 @@ func TestVerifyPaymentHandler_DBError(t *testing.T) {
 		var req map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&req)
 		method, _ := req["method"].(string)
-		
+
 		if method == "getSignaturesForAddress" {
 			w.Write([]byte(`{"result": [{"signature": "sig123", "err": null}], "error": null}`))
 		} else if method == "getTransaction" {

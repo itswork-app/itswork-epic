@@ -141,7 +141,7 @@ func (e *Enricher) checkLpBurned(ctx context.Context, rpcURL, mint string) (bool
 	var res struct {
 		Result struct {
 			Ownership struct {
-				Frozen   bool `json:"frozen"`
+				Frozen    bool `json:"frozen"`
 				Delegated bool `json:"delegated"`
 			} `json:"ownership"`
 			Authorities []map[string]interface{} `json:"authorities"`

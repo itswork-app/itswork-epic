@@ -122,7 +122,7 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 
 	// Enrich the payload with real on-chain data before sending to Brain
 	if s.enricher != nil {
-		s.enricher.Enrich(ctx, &payload)
+		_ = s.enricher.Enrich(ctx, &payload)
 	}
 	// Invoke gRPC AnalyzeToken to Python Brain with REAL data from Ingestor
 	resp, err := s.brainClient.AnalyzeToken(

@@ -90,8 +90,8 @@ func (s *PayService) VerifyTransaction(ctx context.Context, reference string) (b
 		} `json:"result"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&sigRes); err != nil {
-		log.Error().Err(err).Msg("Failed to decode getSignaturesForAddress response")
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&sigRes); decodeErr != nil {
+		log.Error().Err(decodeErr).Msg("Failed to decode getSignaturesForAddress response")
 		return false, nil
 	}
 
@@ -138,8 +138,8 @@ func (s *PayService) VerifyTransaction(ctx context.Context, reference string) (b
 	}
 	defer respTx.Body.Close()
 
-	if err := json.NewDecoder(respTx.Body).Decode(&txRes); err != nil {
-		log.Error().Err(err).Msg("Failed to decode getTransaction response")
+	if decodeErr := json.NewDecoder(respTx.Body).Decode(&txRes); decodeErr != nil {
+		log.Error().Err(decodeErr).Msg("Failed to decode getTransaction response")
 		return false, nil
 	}
 
