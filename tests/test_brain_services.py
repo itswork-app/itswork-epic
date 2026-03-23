@@ -1,8 +1,11 @@
-import pytest
 import os
 from unittest.mock import MagicMock
+
+import pytest
+
 from api.proto import CONTRACTS_pb2
 from internal.brain.services import IntelligenceService
+
 
 @pytest.fixture
 def service():
