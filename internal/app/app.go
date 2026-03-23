@@ -33,6 +33,7 @@ type App struct {
 	Pub         *ingestor.Publisher
 	BrainClient *processor.BrainClient
 	Sub         *processor.Subscriber
+	PayRepo     *repository.PaymentRepository
 	Server      *http.Server
 	Port        string
 }
@@ -67,6 +68,7 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 	}
 
 	repo := repository.NewTokenRepository(db, redisClient)
+	payRepo := repository.NewPaymentRepository(db, redisClient)
 	pub := ingestor.NewPublisher()
 
 	// Initialize Observability (Sentry & OTel)
@@ -84,7 +86,7 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 		sub = processor.NewSubscriber(brainClient, repo, nil)
 	}
 
-	router := ingestor.SetupRouter(pub, repo)
+	router := ingestor.SetupRouter(pub, repo, payRepo)
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: router,
@@ -96,6 +98,7 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 		Pub:         pub,
 		BrainClient: brainClient,
 		Sub:         sub,
+		PayRepo:     payRepo,
 		Server:      srv,
 		Port:        port,
 	}, nil

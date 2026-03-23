@@ -21,7 +21,7 @@ type Brainger interface {
 
 // VaultRepository defines the interface for data persistence
 type VaultRepository interface {
-	SaveAnalysis(ctx context.Context, mint, creator, verdict string, score int) error
+	SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error
 }
 
 // HeliusPayload represents the simplified structure to extract needed fields
@@ -115,27 +115,15 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 
 	log.Debug().Str("mint", payload.MintAddress).Msg("Processing token from Pub/Sub...")
 
-	// Safe Heuristic Defaults (PR-12.7)
-	// If Helius payload is missing these, we use safe values to avoid false "DANGER" verdicts
-	walletAge := payload.CreatorWalletAgeHours
-	if walletAge == 0 {
-		walletAge = 48 // Default safe age > 24h
-	}
-	isLpBurned := payload.IsLpBurned
-	if !isLpBurned && payload.MintAddress != "" {
-		// Mock logic: assume burned if data missing for now to avoid score cap
-		isLpBurned = true
-	}
-	concentration := payload.Top10HolderConcentrationPercent
-	if concentration == 0 {
-		concentration = 10.0 // Default safe concentration < 50%
-	}
-	fundingPassed := true // Default safe
-
-	// Invoke gRPC AnalyzeToken to Python Brain
+	// Invoke gRPC AnalyzeToken to Python Brain with REAL data from Ingestor
 	resp, err := s.brainClient.AnalyzeToken(
-		ctx, payload.MintAddress, payload.CreatorAddress,
-		walletAge, isLpBurned, concentration, fundingPassed,
+		ctx,
+		payload.MintAddress,
+		payload.CreatorAddress,
+		payload.CreatorWalletAgeHours,
+		payload.IsLpBurned,
+		payload.Top10HolderConcentrationPercent,
+		payload.FundingSourceCheckPassed,
 	)
 	if err != nil {
 		log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Intelligence Analysis failed")
@@ -144,7 +132,7 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 	}
 
 	// Persist Analysis result to Neon DB via Repository Layer
-	err = s.repo.SaveAnalysis(ctx, payload.MintAddress, payload.CreatorAddress, resp.Verdict, int(resp.Score))
+	err = s.repo.SaveAnalysis(ctx, payload.MintAddress, payload.CreatorAddress, resp.Verdict, resp.Reason, int(resp.Score))
 	if err != nil {
 		// Log error is handled in Repository, but we Decide Nack or Ack here
 		// Standard: Nack to allow retry if DB is temporarily unstable

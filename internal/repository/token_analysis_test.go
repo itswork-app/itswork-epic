@@ -46,12 +46,12 @@ func TestSaveAnalysis_Success(t *testing.T) {
 
 	// Stage 2: Token Analysis UPSERT
 	mock.ExpectExec("INSERT INTO token_analysis").
-		WithArgs(mint, creatorUUID, verdict, score, sqlmock.AnyArg()).
+		WithArgs(mint, creatorUUID, verdict, score, sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	mock.ExpectCommit()
 
-	err = repo.SaveAnalysis(ctx, mint, creator, verdict, score)
+	err = repo.SaveAnalysis(ctx, mint, creator, verdict, "Strong heuristics", score)
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -70,7 +70,7 @@ func TestSaveAnalysis_WalletFailure_Rollback(t *testing.T) {
 		WillReturnError(errors.New("db error"))
 	mock.ExpectRollback()
 
-	err = repo.SaveAnalysis(ctx, "mint", "creator_fail", "SAFE", 80)
+	err = repo.SaveAnalysis(ctx, "mint", "creator_fail", "SAFE", "Reason", 80)
 	assert.Error(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -91,7 +91,7 @@ func TestSaveAnalysis_AnalysisFailure_Rollback(t *testing.T) {
 		WillReturnError(errors.New("deadlock or something"))
 	mock.ExpectRollback()
 
-	err = repo.SaveAnalysis(ctx, "mint", "creator", "SAFE", 80)
+	err = repo.SaveAnalysis(ctx, "mint", "creator", "SAFE", "Reason", 80)
 	assert.Error(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -108,7 +108,7 @@ func TestGetAnalysis_CacheHit(t *testing.T) {
 	err := mr.Set("token_verdict:mint123", `{"score":85,"verdict":"SAFE"}`)
 	assert.NoError(t, err)
 
-	resp, err := repo.GetAnalysis(ctx, "mint123")
+	resp, err := repo.GetAnalysis(ctx, "mint123", true)
 	assert.NoError(t, err)
 	assert.Equal(t, int32(85), resp.Score)
 	assert.Equal(t, "SAFE", resp.Verdict)
@@ -125,11 +125,11 @@ func TestGetAnalysis_CacheMiss_DBHit(t *testing.T) {
 	repo := NewTokenRepository(db, rdb)
 	ctx := context.Background()
 
-	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_miss").
-		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score"}).AddRow("RUG", 20))
+		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason"}).AddRow("RUG", 20, "Wallet too young"))
 
-	resp, err := repo.GetAnalysis(ctx, "mint_miss")
+	resp, err := repo.GetAnalysis(ctx, "mint_miss", false)
 	assert.NoError(t, err)
 	assert.Equal(t, int32(20), resp.Score)
 	assert.Equal(t, "RUG", resp.Verdict)
@@ -151,11 +151,11 @@ func TestGetAnalysis_DBNotFound(t *testing.T) {
 	repo := NewTokenRepository(db, rdb)
 	ctx := context.Background()
 
-	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_not_found").
 		WillReturnError(sql.ErrNoRows)
 
-	resp, err := repo.GetAnalysis(ctx, "mint_not_found")
+	resp, err := repo.GetAnalysis(ctx, "mint_not_found", true)
 	assert.Error(t, err)
 	assert.Nil(t, resp)
 	assert.Contains(t, err.Error(), "analysis not found")
@@ -176,11 +176,11 @@ func TestGetAnalysis_CacheUnmarshalError(t *testing.T) {
 	err = mr.Set("token_verdict:mint_unmarshal_err", `not-a-json`)
 	assert.NoError(t, err)
 
-	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_unmarshal_err").
-		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score"}).AddRow("SAFE", 99))
+		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason"}).AddRow("SAFE", 99, "Reason"))
 
-	resp, err := repo.GetAnalysis(ctx, "mint_unmarshal_err")
+	resp, err := repo.GetAnalysis(ctx, "mint_unmarshal_err", true)
 	assert.NoError(t, err)
 	assert.Equal(t, int32(99), resp.Score)
 }
@@ -198,11 +198,11 @@ func TestGetAnalysis_RedisGetAndSetError(t *testing.T) {
 	// Close miniredis immediately to force Redis GET and SET network errors
 	mr.Close()
 
-	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_redis_down").
-		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score"}).AddRow("RUG", 20))
+		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason"}).AddRow("RUG", 20, "Reason"))
 
-	resp, err := repo.GetAnalysis(ctx, "mint_redis_down")
+	resp, err := repo.GetAnalysis(ctx, "mint_redis_down", true)
 	assert.NoError(t, err)
 	assert.Equal(t, int32(20), resp.Score)
 	assert.Equal(t, "RUG", resp.Verdict)
@@ -219,11 +219,11 @@ func TestGetAnalysis_DBQueryError(t *testing.T) {
 	repo := NewTokenRepository(db, rdb)
 	ctx := context.Background()
 
-	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_db_err").
 		WillReturnError(errors.New("db connection dropped"))
 
-	resp, err := repo.GetAnalysis(ctx, "mint_db_err")
+	resp, err := repo.GetAnalysis(ctx, "mint_db_err", true)
 	assert.Error(t, err)
 	assert.Nil(t, resp)
 }
