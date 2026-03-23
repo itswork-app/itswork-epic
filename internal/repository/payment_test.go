@@ -65,7 +65,8 @@ func TestIsPaid_CacheHit(t *testing.T) {
 	repo := NewPaymentRepository(nil, rdb)
 	ctx := context.Background()
 
-	mr.Set("payment_verified:user123:mint456", "true")
+	err = mr.Set("payment_verified:user123:mint456", "true")
+	assert.NoError(t, err)
 
 	paid := repo.IsPaid(ctx, "user123", "mint456")
 	assert.True(t, paid)

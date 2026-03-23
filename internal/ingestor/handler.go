@@ -6,8 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 
-	"itswork.app/internal/repository"
 	"itswork.app/internal/pay"
+	"itswork.app/internal/repository"
 
 	sentrygin "github.com/getsentry/sentry-go/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"

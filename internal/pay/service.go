@@ -27,14 +27,14 @@ func NewPayService() *PayService {
 // GeneratePaymentURL creates a Solana Pay compliant URL: solana:<address>?amount=<amount>&reference=<reference>
 func (s *PayService) GeneratePaymentURL(mint string) (string, string) {
 	reference := uuid.New().String()
-	
+
 	// Format: solana:7nEByo6E1...RE8?amount=0.1&reference=UUID&label=ItsWork%20Scan
 	address := s.ProjectWallet
 	amount := s.ScanPrice
 	label := url.QueryEscape("ItsWork AI Analysis")
 	memo := url.QueryEscape(fmt.Sprintf("Scan for %s", mint))
 
-	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s", 
+	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
 		address, amount, reference, label, memo)
 
 	return solanaURL, reference
@@ -50,9 +50,9 @@ func (s *PayService) VerifyTransaction(ctx context.Context, reference string) (b
 	// Standard Solana Pay verification involves searching for the reference as a 'readonly' signer in a transaction
 	// For MVP: We mock success if API key is present until Helius SDK/Client is fully integrated
 	// In reality, this would be a JSON-RPC call to 'getSignaturesForAddress' with the reference key.
-	
+
 	log.Printf("Verifying transaction on-chain for reference: %s", reference)
-	
+
 	// TODO: Implement real Helius RPC call using net/http
 	return true, nil
 }

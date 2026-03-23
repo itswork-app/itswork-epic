@@ -40,7 +40,8 @@ func TestCreatePaymentHandler_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
 	assert.NotEmpty(t, resp["payment_url"])
 	assert.NotEmpty(t, resp["reference"])
 }

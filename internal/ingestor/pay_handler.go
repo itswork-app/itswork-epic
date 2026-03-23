@@ -26,9 +26,9 @@ func CreatePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 	}
 
 	payURL, reference := payService.GeneratePaymentURL(mint)
-	
+
 	price, _ := strconv.ParseFloat(payService.ScanPrice, 64)
-	
+
 	payment := &repository.Payment{
 		UserID:      userID,
 		MintAddress: mint,

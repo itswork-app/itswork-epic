@@ -58,7 +58,7 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 		return err
 	}
 
-	// Stateless: Cache the succesful payment in Redis for 1 hour to bypass DB on analysis requests
+	// Stateless: Cache the successful payment in Redis for 1 hour to bypass DB on analysis requests
 	if status == "success" && r.redis != nil {
 		cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
 		r.redis.Set(ctx, cacheKey, "true", 1*time.Hour)
