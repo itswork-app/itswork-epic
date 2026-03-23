@@ -15,10 +15,13 @@ import (
 )
 
 type PayService struct {
-	ProjectWallet string
-	ScanPrice     string // in SOL, e.g., "0.1"
-	HeliusAPIKey  string
-	BaseURL       string
+	ProjectWallet  string
+	ScanPrice      string // in SOL, e.g., "0.1"
+	Bundle50Price  string
+	Bundle100Price string
+	SubProPrice    string
+	HeliusAPIKey   string
+	BaseURL        string
 }
 
 var httpClient = &http.Client{
@@ -26,11 +29,31 @@ var httpClient = &http.Client{
 }
 
 func NewPayService() *PayService {
+	scanPrice := os.Getenv("SCAN_PRICE_SOL")
+	if scanPrice == "" {
+		scanPrice = "0.01" // ~$0.91
+	}
+	bundle50 := os.Getenv("BUNDLE_50_PRICE_SOL")
+	if bundle50 == "" {
+		bundle50 = "0.4" // ~$36.40
+	}
+	bundle100 := os.Getenv("BUNDLE_100_PRICE_SOL")
+	if bundle100 == "" {
+		bundle100 = "0.7" // ~$63.70
+	}
+	subPro := os.Getenv("SUB_PRO_PRICE_SOL")
+	if subPro == "" {
+		subPro = "0.25" // ~$22.75
+	}
+
 	return &PayService{
-		ProjectWallet: os.Getenv("PROJECT_WALLET_ADDRESS"),
-		ScanPrice:     os.Getenv("SCAN_PRICE_SOL"),
-		HeliusAPIKey:  os.Getenv("HELIUS_API_KEY"),
-		BaseURL:       "https://mainnet.helius-rpc.com",
+		ProjectWallet:  os.Getenv("PROJECT_WALLET_ADDRESS"),
+		ScanPrice:      scanPrice,
+		Bundle50Price:  bundle50,
+		Bundle100Price: bundle100,
+		SubProPrice:    subPro,
+		HeliusAPIKey:   os.Getenv("HELIUS_API_KEY"),
+		BaseURL:        "https://mainnet.helius-rpc.com",
 	}
 }
 
@@ -58,17 +81,17 @@ func (s *PayService) GenerateBundlePaymentURL(userID, bundleType string) (string
 	var label string
 	switch bundleType {
 	case "BUNDLE_50":
-		amount = "4.5" // Example price for 50 scans (inclyding discount)
+		amount = s.Bundle50Price
 		label = "ItsWork 50 Credits"
 	case "BUNDLE_100":
-		amount = "8.0" // Example price for 100 scans
+		amount = s.Bundle100Price
 		label = "ItsWork 100 Credits"
 	default:
 		amount = s.ScanPrice
 		label = "ItsWork Credits"
 	}
 
-	memo := url.QueryEscape(fmt.Sprintf("BUNDLE:%s:%s", bundleType, userID))
+	memo := url.QueryEscape(fmt.Sprintf("BUNDLE:%s:%s:%s", bundleType, userID, reference))
 	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
 		address, amount, reference, url.QueryEscape(label), memo)
 
@@ -84,14 +107,14 @@ func (s *PayService) GenerateSubscriptionPaymentURL(userID, planType string) (st
 	var label string
 	switch planType {
 	case "SUB_MONTHLY_PRO":
-		amount = "25.0" // Example monthly price
+		amount = s.SubProPrice
 		label = "ItsWork Monthly Pro"
 	default:
-		amount = "25.0"
+		amount = s.SubProPrice
 		label = "ItsWork Subscription"
 	}
 
-	memo := url.QueryEscape(fmt.Sprintf("SUBSCRIPTION:%s:%s", planType, userID))
+	memo := url.QueryEscape(fmt.Sprintf("SUBSCRIPTION:%s:%s:%s", planType, userID, reference))
 	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
 		address, amount, reference, url.QueryEscape(label), memo)
 

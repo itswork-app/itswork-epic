@@ -65,9 +65,24 @@ func CreateBundlePaymentHandler(c *gin.Context, payService *pay.PayService, payR
 
 	payURL, reference := payService.GenerateBundlePaymentURL(userID, bundleType)
 
-	// Note: We don't save to 'payments' table yet if it's not a single-scan payment,
-	// or we can use a different table 'pending_purchases'.
-	// For simplicity, we'll use the reference on-chain to verify later.
+	// Save pending payment record to trigger fulfillment later
+	var amountStr string
+	if bundleType == "BUNDLE_50" {
+		amountStr = payService.Bundle50Price
+	} else if bundleType == "BUNDLE_100" {
+		amountStr = payService.Bundle100Price
+	}
+	amount, _ := strconv.ParseFloat(amountStr, 64)
+
+	payment := &repository.Payment{
+		UserID:      userID,
+		MintAddress: bundleType,
+		Reference:   reference,
+		AmountSol:   amount,
+	}
+	if err := payRepo.SavePayment(c.Request.Context(), payment); err != nil {
+		log.Error().Err(err).Str("user", userID).Str("mint", bundleType).Msg("Failed to save pending payment record")
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"payment_url": payURL,
@@ -88,6 +103,17 @@ func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService
 
 	payURL, reference := payService.GenerateSubscriptionPaymentURL(userID, planType)
 
+	// Save pending payment record
+	amount, _ := strconv.ParseFloat(payService.SubProPrice, 64)
+	payment := &repository.Payment{
+		UserID:      userID,
+		MintAddress: planType,
+		Reference:   reference,
+		AmountSol:   amount,
+	}
+	if err := payRepo.SavePayment(c.Request.Context(), payment); err != nil {
+		log.Error().Err(err).Str("user", userID).Str("plan", planType).Msg("Failed to save pending sub record")
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"payment_url": payURL,
 		"reference":   reference,

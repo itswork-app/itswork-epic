@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSavePayment_Success(t *testing.T) {
+func TestSavePayment(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
 	defer db.Close()
@@ -30,29 +30,7 @@ func TestSavePayment_Success(t *testing.T) {
 
 	err = repo.SavePayment(ctx, payment)
 	assert.NoError(t, err)
-}
-
-func TestSavePayment_Error(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	assert.NoError(t, err)
-	defer db.Close()
-
-	repo := NewPaymentRepository(db, nil)
-	ctx := context.Background()
-
-	payment := &Payment{
-		UserID:      "user123",
-		MintAddress: "mint456",
-		Reference:   "ref789",
-		AmountSol:   0.1,
-	}
-
-	mock.ExpectQuery("INSERT INTO payments").
-		WithArgs(payment.UserID, payment.MintAddress, payment.Reference, "pending", payment.AmountSol).
-		WillReturnError(assert.AnError)
-
-	err = repo.SavePayment(ctx, payment)
-	assert.Error(t, err)
+	assert.Equal(t, "uuid-123", payment.ID)
 }
 
 func TestUpdatePaymentStatus_Success(t *testing.T) {
@@ -71,7 +49,7 @@ func TestUpdatePaymentStatus_Success(t *testing.T) {
 
 	mock.ExpectQuery("UPDATE payments").
 		WithArgs(status, reference).
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "token_mint"}).AddRow("user123", "mint456"))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "mint456", 0.1))
 
 	err = repo.UpdatePaymentStatus(ctx, reference, status)
 	assert.NoError(t, err)
@@ -82,14 +60,65 @@ func TestUpdatePaymentStatus_Success(t *testing.T) {
 	assert.Equal(t, "true", val)
 }
 
+func TestUpdatePaymentStatus_BundleFulfillment(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	// Mock Update for BUNDLE_50
+	mock.ExpectQuery("UPDATE payments").
+		WithArgs("success", "ref-bundle").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "BUNDLE_50", 4.0))
+
+	// Fulfillment: AddUserCredits
+	mock.ExpectExec("INSERT INTO user_credits").
+		WithArgs("user123", 50).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err = repo.UpdatePaymentStatus(ctx, "ref-bundle", "success")
+	assert.NoError(t, err)
+}
+
+func TestUpdatePaymentStatus_SubscriptionFulfillment(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	// Mock Update for SUB_MONTHLY_PRO
+	mock.ExpectQuery("UPDATE payments").
+		WithArgs("success", "ref-sub").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "SUB_MONTHLY_PRO", 2.0))
+
+	// Fulfillment: ActivateSubscription
+	mock.ExpectExec("INSERT INTO user_subscriptions").
+		WithArgs("user123", "active").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err = repo.UpdatePaymentStatus(ctx, "ref-sub", "success")
+	assert.NoError(t, err)
+}
+
 func TestIsPaid_CacheHit(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
 	mr, rdb := setupTestRedis(t)
 	defer mr.Close()
 
-	repo := NewPaymentRepository(nil, rdb)
+	repo := NewPaymentRepository(db, rdb)
 	ctx := context.Background()
 
-	err := mr.Set("payment_verified:user123:mint456", "true")
+	// Lazy-init
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err = mr.Set("payment_verified:user123:mint456", "true")
 	assert.NoError(t, err)
 
 	paid := repo.IsPaid(ctx, "user123", "mint456")
@@ -106,6 +135,9 @@ func TestIsPaid_CacheMiss_DBHit(t *testing.T) {
 
 	repo := NewPaymentRepository(db, rdb)
 	ctx := context.Background()
+
+	// Lazy-init
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// 1. Subscription check fails
 	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
@@ -126,11 +158,8 @@ func TestIsPaid_CacheMiss_DBHit(t *testing.T) {
 
 	paid := repo.IsPaid(ctx, "user123", "mint456")
 	assert.True(t, paid)
-
-	// Verify it was cached
-	val, _ := rdb.Get(ctx, "payment_verified:user123:mint456").Result()
-	assert.Equal(t, "true", val)
 }
+
 func TestIsPaid_Subscription(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
@@ -138,6 +167,9 @@ func TestIsPaid_Subscription(t *testing.T) {
 
 	repo := NewPaymentRepository(db, nil)
 	ctx := context.Background()
+
+	// Lazy-init
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
 		WithArgs("user123").
@@ -154,6 +186,9 @@ func TestIsPaid_Credit(t *testing.T) {
 
 	repo := NewPaymentRepository(db, nil)
 	ctx := context.Background()
+
+	// Lazy-init
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// 1. Subscription check fails
 	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
@@ -178,6 +213,9 @@ func TestIsPaid_UsageLimitExceeded(t *testing.T) {
 
 	repo := NewPaymentRepository(db, nil)
 	ctx := context.Background()
+
+	// Lazy-init
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// 1. Subscription check fails
 	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").

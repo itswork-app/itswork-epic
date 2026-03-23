@@ -95,7 +95,7 @@ func TestVerifyPaymentHandler_Success(t *testing.T) {
 	// VerifyTransaction currently returns true, so it will call UpdatePaymentStatus
 	mock.ExpectQuery("UPDATE payments").
 		WithArgs("success", "ref123").
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address"}).AddRow("user123", "mint123"))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "mint123", 0.1))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -265,17 +265,27 @@ func TestCreateBundlePaymentHandler_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	os.Setenv("PROJECT_WALLET_ADDRESS", "7nEByo6E1RzE1H31RE8RE7RE8RE7RE8RE7RE8RE7RE8")
 
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	payRepo := repository.NewPaymentRepository(db, nil)
 	payService := pay.NewPayService()
+
+	// Expect SavePayment
+	mock.ExpectQuery("INSERT INTO payments").
+		WithArgs("user123", "BUNDLE_50", sqlmock.AnyArg(), "pending", 0.4).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-bundle"))
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/bundle?type=BUNDLE_50", nil)
 	c.Request.Header.Set("X-User-Id", "user123")
 
-	CreateBundlePaymentHandler(c, payService, nil)
+	CreateBundlePaymentHandler(c, payService, payRepo)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, resp["payment_url"])
 	assert.Equal(t, "BUNDLE_50", resp["type"])
@@ -285,17 +295,27 @@ func TestCreateSubscriptionPaymentHandler_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	os.Setenv("PROJECT_WALLET_ADDRESS", "7nEByo6E1RzE1H31RE8RE7RE8RE7RE8RE7RE8RE7RE8")
 
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	payRepo := repository.NewPaymentRepository(db, nil)
 	payService := pay.NewPayService()
+
+	// Expect SavePayment
+	mock.ExpectQuery("INSERT INTO payments").
+		WithArgs("user123", "SUB_MONTHLY_PRO", sqlmock.AnyArg(), "pending", 0.25).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-sub"))
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/subscribe?plan=SUB_MONTHLY_PRO", nil)
 	c.Request.Header.Set("X-User-Id", "user123")
 
-	CreateSubscriptionPaymentHandler(c, payService, nil)
+	CreateSubscriptionPaymentHandler(c, payService, payRepo)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, resp["payment_url"])
 	assert.Equal(t, "SUB_MONTHLY_PRO", resp["plan"])

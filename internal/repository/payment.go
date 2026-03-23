@@ -45,23 +45,36 @@ func (r *PaymentRepository) SavePayment(ctx context.Context, p *Payment) error {
 }
 
 // UpdatePaymentStatus transitions payment to Success/Failed and updates Redis cache
+// It also triggers fulfillment for BUNDLE or SUBSCRIPTION purchases.
 func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, status string) error {
 	var userID, mint string
+	var amount float64
 	query := `
 		UPDATE payments
 		SET status = $1, updated_at = now()
 		WHERE reference_key = $2
-		RETURNING user_id, mint_address;
+		RETURNING user_id, mint_address, amount_sol;
 	`
-	err := r.db.QueryRowContext(ctx, query, status, reference).Scan(&userID, &mint)
+	err := r.db.QueryRowContext(ctx, query, status, reference).Scan(&userID, &mint, &amount)
 	if err != nil {
 		return err
 	}
 
-	// Stateless: Cache the successful payment in Redis for 1 hour to bypass DB on analysis requests
-	if status == "success" && r.redis != nil {
-		cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
-		r.redis.Set(ctx, cacheKey, "true", 1*time.Hour)
+	if status == "success" {
+		// 1. Fulfillment Logic
+		if mint == "BUNDLE_50" {
+			_ = r.AddUserCredits(ctx, userID, 50)
+		} else if mint == "BUNDLE_100" {
+			_ = r.AddUserCredits(ctx, userID, 100)
+		} else if mint == "SUB_MONTHLY_PRO" {
+			_ = r.ActivateSubscription(ctx, userID, "active")
+		}
+
+		// 2. Cache the successful access in Redis for 1 hour
+		if r.redis != nil {
+			cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
+			r.redis.Set(ctx, cacheKey, "true", 1*time.Hour)
+		}
 	}
 
 	return nil
@@ -69,6 +82,9 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 
 // IsPaid checks if a user has access to full analysis for a specific mint using hybrid logic
 func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) bool {
+	// Lazy-init user credits row if not exists
+	_ = r.InitUserCredits(ctx, userID)
+
 	cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
 
 	// 1. Redis Check (Stateless Optimization - represents any previously verified access)
@@ -195,4 +211,44 @@ func (r *PaymentRepository) cacheAccess(ctx context.Context, userID, mint string
 		cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
 		r.redis.Set(ctx, cacheKey, "true", 1*time.Hour)
 	}
+}
+
+// InitUserCredits ensures a user has a credit row in the database
+func (r *PaymentRepository) InitUserCredits(ctx context.Context, userID string) error {
+	query := `INSERT INTO user_credits (user_id, balance) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING`
+	_, err := r.db.ExecContext(ctx, query, userID)
+	return err
+}
+
+// AddUserCredits adds credits to a user balance atomically
+func (r *PaymentRepository) AddUserCredits(ctx context.Context, userID string, amount int) error {
+	query := `
+		INSERT INTO user_credits (user_id, balance) 
+		VALUES ($1, $2) 
+		ON CONFLICT (user_id) DO UPDATE 
+		SET balance = user_credits.balance + $2, updated_at = now()
+	`
+	_, err := r.db.ExecContext(ctx, query, userID, amount)
+	if err != nil {
+		log.Error().Err(err).Str("user", userID).Int("amount", amount).Msg("Failed to add user credits")
+	}
+	return err
+}
+
+// ActivateSubscription activates or extends a user subscription
+func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, status string) error {
+	query := `
+		INSERT INTO user_subscriptions (user_id, status, expires_at)
+		VALUES ($1, $2, now() + interval '30 days')
+		ON CONFLICT (user_id) DO UPDATE
+		SET status = $2, expires_at = CASE 
+			WHEN user_subscriptions.expires_at > now() THEN user_subscriptions.expires_at + interval '30 days'
+			ELSE now() + interval '30 days'
+		END, updated_at = now()
+	`
+	_, err := r.db.ExecContext(ctx, query, userID, status)
+	if err != nil {
+		log.Error().Err(err).Str("user", userID).Msg("Failed to activate subscription")
+	}
+	return err
 }
