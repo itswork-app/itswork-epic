@@ -16,7 +16,7 @@ type mockTopic struct {
 }
 
 func (m *mockTopic) Publish(ctx context.Context, msg *pubsub.Message) *pubsub.PublishResult {
-	return &pubsub.PublishResult{} 
+	return &pubsub.PublishResult{}
 }
 
 func (m *mockTopic) Stop() {
@@ -33,10 +33,10 @@ func TestNewPublisher_MockSuccess(t *testing.T) {
 	pub := NewPublisher()
 	assert.NotNil(t, pub)
 	pub.topicPub = &mockTopic{}
-	
+
 	pub.PublishChan <- []byte("test")
 	time.Sleep(50 * time.Millisecond)
-	
+
 	pub.Shutdown()
 	assert.True(t, pub.topicPub.(*mockTopic).stopped)
 }

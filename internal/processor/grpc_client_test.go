@@ -69,7 +69,9 @@ func TestBrainClient_AnalyzeToken_Error(t *testing.T) {
 	// override the mock to return an error, but wait, the struct doesn't have an err field.
 	// let's just close the server immediately so it fails
 	proto.RegisterIntelligenceServiceServer(s, mockServer)
-	go s.Serve(lis)
+	go func() {
+		_ = s.Serve(lis)
+	}()
 	s.Stop() // stop it so dialing or calling fails
 
 	bufDialer := func(context.Context, string) (net.Conn, error) {

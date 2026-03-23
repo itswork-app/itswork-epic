@@ -129,7 +129,7 @@ func TestInitSubscriber_CustomKeys(t *testing.T) {
 	defer os.Unsetenv("PROJECT_ID")
 	defer os.Unsetenv("SUB_ID")
 	// Will still fail without auth, but covers the assignment branches
-	InitSubscriber(nil, nil)
+	_, _ = InitSubscriber(nil, nil)
 }
 
 func TestInitSubscriber_Defaults(t *testing.T) {
