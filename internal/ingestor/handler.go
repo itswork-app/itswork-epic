@@ -14,7 +14,12 @@ import (
 )
 
 // SetupRouter initializes the Gin engine and creates the routes.
-func SetupRouter(pub *Publisher, repo *repository.TokenRepository, payRepo *repository.PaymentRepository) *gin.Engine {
+func SetupRouter(
+	pub *Publisher,
+	repo *repository.TokenRepository,
+	payRepo *repository.PaymentRepository,
+	payService *pay.PayService,
+) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -38,11 +43,6 @@ func SetupRouter(pub *Publisher, repo *repository.TokenRepository, payRepo *repo
 
 	r.GET("/api/v1/token/:mint", func(c *gin.Context) {
 		TokenAnalysisHandler(c, repo, payRepo)
-	})
-
-	payService := pay.NewPayService()
-	r.POST("/api/v1/pay/create", func(c *gin.Context) {
-		CreatePaymentHandler(c, payService, payRepo)
 	})
 
 	r.GET("/api/v1/pay/verify/:reference", func(c *gin.Context) {

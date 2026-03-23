@@ -11,7 +11,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
+)
+
+const (
+	PriceSingleUSD   = 1.5
+	PriceBundle50USD = 35.0
+	PriceWeeklyUSD   = 15.0
+	PriceMonthlyUSD  = 49.0
 )
 
 type PayService struct {
@@ -22,28 +30,29 @@ type PayService struct {
 	SubProPrice    string
 	HeliusAPIKey   string
 	BaseURL        string
+	Redis          *redis.Client
 }
 
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func NewPayService() *PayService {
+func NewPayService(rdb *redis.Client) *PayService {
 	scanPrice := os.Getenv("SCAN_PRICE_SOL")
 	if scanPrice == "" {
-		scanPrice = "0.01" // ~$0.91
+		scanPrice = "0.01" // fallback if orbit fails
 	}
 	bundle50 := os.Getenv("BUNDLE_50_PRICE_SOL")
 	if bundle50 == "" {
-		bundle50 = "0.4" // ~$36.40
+		bundle50 = "0.4"
 	}
 	bundle100 := os.Getenv("BUNDLE_100_PRICE_SOL")
 	if bundle100 == "" {
-		bundle100 = "0.7" // ~$63.70
+		bundle100 = "0.7"
 	}
 	subPro := os.Getenv("SUB_PRO_PRICE_SOL")
 	if subPro == "" {
-		subPro = "0.25" // ~$22.75
+		subPro = "0.25"
 	}
 
 	return &PayService{
@@ -54,40 +63,44 @@ func NewPayService() *PayService {
 		SubProPrice:    subPro,
 		HeliusAPIKey:   os.Getenv("HELIUS_API_KEY"),
 		BaseURL:        "https://mainnet.helius-rpc.com",
+		Redis:          rdb,
 	}
 }
 
 // GeneratePaymentURL creates a Solana Pay compliant URL for single scans
-func (s *PayService) GeneratePaymentURL(mint string) (string, string) {
+func (s *PayService) GeneratePaymentURL(ctx context.Context, mint string) (string, string, string) {
 	reference := uuid.New().String()
+	solPrice := s.GetSolPriceUSD(ctx)
+	amount := ConvertUSDToSOL(PriceSingleUSD, solPrice)
 
 	address := s.ProjectWallet
-	amount := s.ScanPrice
 	label := url.QueryEscape("ItsWork AI Analysis")
 	memo := url.QueryEscape(fmt.Sprintf("SCAN:%s", mint)) // Prefix for identification
 
 	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
 		address, amount, reference, label, memo)
 
-	return solanaURL, reference
+	return solanaURL, reference, amount
 }
 
 // GenerateBundlePaymentURL creates a URL for purchasing credit bundles
-func (s *PayService) GenerateBundlePaymentURL(userID, bundleType string) (string, string) {
+func (s *PayService) GenerateBundlePaymentURL(ctx context.Context, userID, bundleType string) (string, string, string) {
 	reference := uuid.New().String()
 	address := s.ProjectWallet
+	solPrice := s.GetSolPriceUSD(ctx)
 
 	var amount string
 	var label string
 	switch bundleType {
 	case "BUNDLE_50":
-		amount = s.Bundle50Price
+		amount = ConvertUSDToSOL(PriceBundle50USD, solPrice)
 		label = "ItsWork 50 Credits"
 	case "BUNDLE_100":
-		amount = s.Bundle100Price
+		// Let's assume B100 is 60 USD (discounted from 70).
+		amount = ConvertUSDToSOL(60.0, solPrice)
 		label = "ItsWork 100 Credits"
 	default:
-		amount = s.ScanPrice
+		amount = ConvertUSDToSOL(PriceSingleUSD, solPrice)
 		label = "ItsWork Credits"
 	}
 
@@ -95,22 +108,26 @@ func (s *PayService) GenerateBundlePaymentURL(userID, bundleType string) (string
 	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
 		address, amount, reference, url.QueryEscape(label), memo)
 
-	return solanaURL, reference
+	return solanaURL, reference, amount
 }
 
 // GenerateSubscriptionPaymentURL creates a URL for monthly subscription
-func (s *PayService) GenerateSubscriptionPaymentURL(userID, planType string) (string, string) {
+func (s *PayService) GenerateSubscriptionPaymentURL(ctx context.Context, userID, planType string) (string, string, string) {
 	reference := uuid.New().String()
 	address := s.ProjectWallet
+	solPrice := s.GetSolPriceUSD(ctx)
 
 	var amount string
 	var label string
 	switch planType {
+	case "SUB_WEEKLY_PRO":
+		amount = ConvertUSDToSOL(PriceWeeklyUSD, solPrice)
+		label = "ItsWork Weekly Pro"
 	case "SUB_MONTHLY_PRO":
-		amount = s.SubProPrice
+		amount = ConvertUSDToSOL(PriceMonthlyUSD, solPrice)
 		label = "ItsWork Monthly Pro"
 	default:
-		amount = s.SubProPrice
+		amount = ConvertUSDToSOL(PriceMonthlyUSD, solPrice)
 		label = "ItsWork Subscription"
 	}
 
@@ -118,7 +135,7 @@ func (s *PayService) GenerateSubscriptionPaymentURL(userID, planType string) (st
 	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
 		address, amount, reference, url.QueryEscape(label), memo)
 
-	return solanaURL, reference
+	return solanaURL, reference, amount
 }
 
 // VerifyTransaction checks if a transaction with the given reference exists and is finalized

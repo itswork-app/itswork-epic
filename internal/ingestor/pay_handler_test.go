@@ -25,10 +25,10 @@ func TestCreatePaymentHandler_Success(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	mock.ExpectQuery("INSERT INTO payments").
-		WithArgs("user123", "mint123", sqlmock.AnyArg(), "pending", 0.1).
+		WithArgs("user123", "mint123", sqlmock.AnyArg(), "pending", 0.0164).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-123"))
 
 	w := httptest.NewRecorder()
@@ -75,7 +75,7 @@ func TestVerifyPaymentHandler_Success(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -95,7 +95,7 @@ func TestVerifyPaymentHandler_Success(t *testing.T) {
 	// VerifyTransaction currently returns true, so it will call UpdatePaymentStatus
 	mock.ExpectQuery("UPDATE payments").
 		WithArgs("success", "ref123").
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "mint123", 0.1))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "mint123", 0.0164))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -127,7 +127,7 @@ func TestCreatePaymentHandler_DBError(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	mock.ExpectQuery("INSERT INTO payments").
 		WillReturnError(assert.AnError)
@@ -150,7 +150,7 @@ func TestVerifyPaymentHandler_DBError(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -183,7 +183,7 @@ func TestVerifyPaymentHandler_ServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	os.Setenv("HELIUS_API_KEY", "") // this will cause PayService.VerifyTransaction to return an error
 
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -198,7 +198,7 @@ func TestVerifyPaymentHandler_Pending(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	os.Setenv("HELIUS_API_KEY", "test-key")
 
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -231,7 +231,7 @@ func TestVerifyPaymentHandler_UpdateDBError(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -270,11 +270,11 @@ func TestCreateBundlePaymentHandler_Success(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	// Expect SavePayment
 	mock.ExpectQuery("INSERT INTO payments").
-		WithArgs("user123", "BUNDLE_50", sqlmock.AnyArg(), "pending", 0.4).
+		WithArgs("user123", "BUNDLE_50", sqlmock.AnyArg(), "pending", 0.3838).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-bundle"))
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -300,11 +300,11 @@ func TestCreateSubscriptionPaymentHandler_Success(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService()
+	payService := pay.NewPayService(nil)
 
 	// Expect SavePayment
 	mock.ExpectQuery("INSERT INTO payments").
-		WithArgs("user123", "SUB_MONTHLY_PRO", sqlmock.AnyArg(), "pending", 0.25).
+		WithArgs("user123", "SUB_MONTHLY_PRO", sqlmock.AnyArg(), "pending", 0.5373).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-sub"))
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

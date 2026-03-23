@@ -25,9 +25,9 @@ func CreatePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 		return
 	}
 
-	payURL, reference := payService.GeneratePaymentURL(mint)
+	payURL, reference, amountStr := payService.GeneratePaymentURL(c.Request.Context(), mint)
 
-	price, _ := strconv.ParseFloat(payService.ScanPrice, 64)
+	price, _ := strconv.ParseFloat(amountStr, 64)
 
 	payment := &repository.Payment{
 		UserID:      userID,
@@ -44,7 +44,7 @@ func CreatePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 	c.JSON(http.StatusOK, gin.H{
 		"payment_url": payURL,
 		"reference":   reference,
-		"amount":      payService.ScanPrice,
+		"amount":      amountStr,
 		"currency":    "SOL",
 	})
 }
@@ -63,15 +63,10 @@ func CreateBundlePaymentHandler(c *gin.Context, payService *pay.PayService, payR
 		return
 	}
 
-	payURL, reference := payService.GenerateBundlePaymentURL(userID, bundleType)
+	payURL, reference, amountStr := payService.GenerateBundlePaymentURL(c.Request.Context(), userID, bundleType)
 
 	// Save pending payment record to trigger fulfillment later
-	var amountStr string
-	if bundleType == "BUNDLE_50" {
-		amountStr = payService.Bundle50Price
-	} else if bundleType == "BUNDLE_100" {
-		amountStr = payService.Bundle100Price
-	}
+
 	amount, _ := strconv.ParseFloat(amountStr, 64)
 
 	payment := &repository.Payment{
@@ -101,10 +96,10 @@ func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService
 		return
 	}
 
-	payURL, reference := payService.GenerateSubscriptionPaymentURL(userID, planType)
+	payURL, reference, amountStr := payService.GenerateSubscriptionPaymentURL(c.Request.Context(), userID, planType)
 
 	// Save pending payment record
-	amount, _ := strconv.ParseFloat(payService.SubProPrice, 64)
+	amount, _ := strconv.ParseFloat(amountStr, 64)
 	payment := &repository.Payment{
 		UserID:      userID,
 		MintAddress: planType,
