@@ -49,6 +49,52 @@ func CreatePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 	})
 }
 
+// CreateBundlePaymentHandler initiates a payment for credit bundles
+func CreateBundlePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) {
+	bundleType := c.Query("type") // BUNDLE_50, BUNDLE_100
+	if bundleType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing bundle type parameter"})
+		return
+	}
+
+	userID := c.GetHeader("X-User-Id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	payURL, reference := payService.GenerateBundlePaymentURL(userID, bundleType)
+
+	// Note: We don't save to 'payments' table yet if it's not a single-scan payment,
+	// or we can use a different table 'pending_purchases'.
+	// For simplicity, we'll use the reference on-chain to verify later.
+
+	c.JSON(http.StatusOK, gin.H{
+		"payment_url": payURL,
+		"reference":   reference,
+		"type":        bundleType,
+	})
+}
+
+// CreateSubscriptionPaymentHandler initiates a payment for Pro subscription
+func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) {
+	planType := c.DefaultQuery("plan", "SUB_MONTHLY_PRO")
+
+	userID := c.GetHeader("X-User-Id")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	payURL, reference := payService.GenerateSubscriptionPaymentURL(userID, planType)
+
+	c.JSON(http.StatusOK, gin.H{
+		"payment_url": payURL,
+		"reference":   reference,
+		"plan":        planType,
+	})
+}
+
 // VerifyPaymentHandler checks if a transaction is finalized on-chain
 func VerifyPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) {
 	reference := c.Param("reference")

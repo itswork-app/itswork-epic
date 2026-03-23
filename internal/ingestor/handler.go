@@ -49,6 +49,14 @@ func SetupRouter(pub *Publisher, repo *repository.TokenRepository, payRepo *repo
 		VerifyPaymentHandler(c, payService, payRepo)
 	})
 
+	r.POST("/api/v1/pay/bundle", func(c *gin.Context) {
+		CreateBundlePaymentHandler(c, payService, payRepo)
+	})
+
+	r.POST("/api/v1/pay/subscribe", func(c *gin.Context) {
+		CreateSubscriptionPaymentHandler(c, payService, payRepo)
+	})
+
 	return r
 }
 
@@ -89,26 +97,26 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 		isPaid = payRepo.IsPaid(c.Request.Context(), userID, mint)
 	}
 
-	resp, err := repo.GetAnalysis(c.Request.Context(), mint, isPaid)
+	if !isPaid {
+		c.JSON(http.StatusPaymentRequired, gin.H{
+			"error":  "Insufficient Credits",
+			"reason": "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning.",
+		})
+		return
+	}
+
+	resp, err := repo.GetAnalysis(c.Request.Context(), mint, true)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Gated Response Logic
-	result := gin.H{
+	// Gated Response Logic (Succcess)
+	c.JSON(http.StatusOK, gin.H{
 		"mint":    mint,
 		"score":   resp.Score,
 		"verdict": resp.Verdict,
-		"is_paid": isPaid,
-	}
-
-	if isPaid {
-		result["reason"] = resp.Reason
-		// In the future, we can add more heuristic details here
-	} else {
-		result["reason"] = "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning."
-	}
-
-	c.JSON(http.StatusOK, result)
+		"is_paid": true,
+		"reason":  resp.Reason,
+	})
 }

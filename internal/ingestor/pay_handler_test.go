@@ -260,3 +260,43 @@ func TestVerifyPaymentHandler_UpdateDBError(t *testing.T) {
 	VerifyPaymentHandler(c, payService, payRepo)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
+
+func TestCreateBundlePaymentHandler_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	os.Setenv("PROJECT_WALLET_ADDRESS", "7nEByo6E1RzE1H31RE8RE7RE8RE7RE8RE7RE8RE7RE8")
+
+	payService := pay.NewPayService()
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/bundle?type=BUNDLE_50", nil)
+	c.Request.Header.Set("X-User-Id", "user123")
+
+	CreateBundlePaymentHandler(c, payService, nil)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, resp["payment_url"])
+	assert.Equal(t, "BUNDLE_50", resp["type"])
+}
+
+func TestCreateSubscriptionPaymentHandler_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	os.Setenv("PROJECT_WALLET_ADDRESS", "7nEByo6E1RzE1H31RE8RE7RE8RE7RE8RE7RE8RE7RE8")
+
+	payService := pay.NewPayService()
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/subscribe?plan=SUB_MONTHLY_PRO", nil)
+	c.Request.Header.Set("X-User-Id", "user123")
+
+	CreateSubscriptionPaymentHandler(c, payService, nil)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, resp["payment_url"])
+	assert.Equal(t, "SUB_MONTHLY_PRO", resp["plan"])
+}

@@ -75,27 +75,23 @@ func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) boo
 	if r.redis != nil {
 		val, err := r.redis.Get(ctx, cacheKey).Result()
 		if err == nil && val == "true" {
+			log.Info().Str("user", userID).Str("mint", mint).Msg("Access granted via Cache")
 			return true
 		}
 	}
 
 	// STEP 1: Check active subscription
-	if r.HasActiveSubscription(ctx, userID) {
+	if r.IsProSubscriber(ctx, userID) {
 		r.cacheAccess(ctx, userID, mint)
+		log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "SUBSCRIPTION").Msg("Access granted")
 		return true
 	}
-
-	// STEP 3: Check if already paid eceran (Done before credit deduction to save user credits)
-	// Although instructions say Step 2 is credit, usually we check if they already bought it first.
-	// But I will stick to instructions if they are strict.
-	// Re-reading: "STEP 3: Cek apakah koin ini sudah pernah dibayar eceran... Jika ya, Unlock."
-	// I'll swap STEP 2 and 3 if it makes more sense, but the prompt is explicit about the order.
-	// I will follow the prompt's order: Sub -> Credit -> Eceran.
 
 	// STEP 2: Check and deduct credit
 	deducted, err := r.DeductCredit(ctx, userID)
 	if err == nil && deducted {
 		r.cacheAccess(ctx, userID, mint)
+		log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "CREDIT").Msg("Access granted")
 		return true
 	}
 
@@ -113,25 +109,50 @@ func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) boo
 	// Backfill cache if paid
 	if isPaid {
 		r.cacheAccess(ctx, userID, mint)
+		log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "SINGLE_PAY").Msg("Access granted")
 	}
 
 	return isPaid
 }
 
-// HasActiveSubscription checks if the user has a 'active' subscription that hasn't expired
-func (r *PaymentRepository) HasActiveSubscription(ctx context.Context, userID string) bool {
+// IsProSubscriber checks if the user has a 'active' subscription that hasn't expired.
+// Uses Redis for quick lookup to reduce DB load.
+func (r *PaymentRepository) IsProSubscriber(ctx context.Context, userID string) bool {
+	subCacheKey := fmt.Sprintf("sub_active:%s", userID)
+
+	// 1. Redis Check
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, subCacheKey).Result()
+		if err == nil {
+			return val == "true"
+		}
+	}
+
+	// 2. Postgres Check
 	var count int
 	query := `
-		SELECT COUNT(*)
-		FROM user_subscriptions
+		SELECT COUNT(*) 
+		FROM user_subscriptions 
 		WHERE user_id = $1 AND status = 'active' AND expires_at > now()
 	`
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(&count)
 	if err != nil {
-		log.Error().Err(err).Str("user", userID).Msg("Failed to check subscription")
+		log.Error().Err(err).Str("user", userID).Msg("Failed to check subscription in DB")
 		return false
 	}
-	return count > 0
+
+	isActive := count > 0
+
+	// 3. Backfill Cache (5 minutes TTL for subscriptions)
+	if r.redis != nil {
+		statusStr := "false"
+		if isActive {
+			statusStr = "true"
+		}
+		r.redis.Set(ctx, subCacheKey, statusStr, 5*time.Minute)
+	}
+
+	return isActive
 }
 
 // DeductCredit removes 1 credit from the user's balance atomically
