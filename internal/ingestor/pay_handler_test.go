@@ -77,6 +77,21 @@ func TestVerifyPaymentHandler_Success(t *testing.T) {
 	payRepo := repository.NewPaymentRepository(db, nil)
 	payService := pay.NewPayService()
 
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&req)
+		method, _ := req["method"].(string)
+		
+		if method == "getSignaturesForAddress" {
+			w.Write([]byte(`{"result": [{"signature": "sig123", "err": null}], "error": null}`))
+		} else if method == "getTransaction" {
+			w.Write([]byte(`{"result": {"meta": {"err": null}}, "error": null}`))
+		}
+	}))
+	defer ts.Close()
+	payService.BaseURL = ts.URL
+
 	// VerifyTransaction currently returns true, so it will call UpdatePaymentStatus
 	mock.ExpectQuery("UPDATE payments").
 		WithArgs("success", "ref123").
@@ -136,6 +151,21 @@ func TestVerifyPaymentHandler_DBError(t *testing.T) {
 
 	payRepo := repository.NewPaymentRepository(db, nil)
 	payService := pay.NewPayService()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&req)
+		method, _ := req["method"].(string)
+		
+		if method == "getSignaturesForAddress" {
+			w.Write([]byte(`{"result": [{"signature": "sig123", "err": null}], "error": null}`))
+		} else if method == "getTransaction" {
+			w.Write([]byte(`{"result": {"meta": {"err": null}}, "error": null}`))
+		}
+	}))
+	defer ts.Close()
+	payService.BaseURL = ts.URL
 
 	mock.ExpectQuery("UPDATE payments").
 		WillReturnError(assert.AnError)

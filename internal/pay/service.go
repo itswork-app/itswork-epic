@@ -50,6 +50,7 @@ func (s *PayService) GeneratePaymentURL(mint string) (string, string) {
 	return solanaURL, reference
 }
 
+// VerifyTransaction checks if a transaction with the given reference exists and is finalized
 func (s *PayService) VerifyTransaction(ctx context.Context, reference string) (bool, error) {
 	if s.HeliusAPIKey == "" {
 		return false, fmt.Errorf("HELIUS_API_KEY not configured")
@@ -151,6 +152,7 @@ func (s *PayService) VerifyTransaction(ctx context.Context, reference string) (b
 		return false, nil // Failed transaction, do not unlock
 	}
 
+	log.Info().Str("reference_key", reference).Str("signature", signature).Msg("Real On-Chain Payment Verified")
 	log.Info().Str("reference_key", reference).Str("signature", signature).Msg("Real On-Chain Payment Verified")
 	return true, nil
 }

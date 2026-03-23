@@ -62,7 +62,6 @@ func TestVerifyTransaction_MockParams(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, success)
 }
-
 func TestVerifyTransaction_NoSignature(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

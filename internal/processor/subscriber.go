@@ -124,7 +124,6 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 	if s.enricher != nil {
 		s.enricher.Enrich(ctx, &payload)
 	}
-
 	// Invoke gRPC AnalyzeToken to Python Brain with REAL data from Ingestor
 	resp, err := s.brainClient.AnalyzeToken(
 		ctx,
