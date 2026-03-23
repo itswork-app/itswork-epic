@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
@@ -241,6 +242,7 @@ func (r *PaymentRepository) AddUserCredits(ctx context.Context, userID string, a
 func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, status string, durationDays int) error {
 	if durationDays <= 0 {
 		log.Error().Str("user", userID).Int("duration", durationDays).Msg("Invalid subscription duration")
+		sentry.CaptureMessage(fmt.Sprintf("Invalid subscription duration for user %s: %d", userID, durationDays))
 		return fmt.Errorf("invalid subscription duration: %d", durationDays)
 	}
 
