@@ -25,7 +25,7 @@ func NewTokenRepository(db *sql.DB, rdb *redis.Client) *TokenRepository {
 }
 
 // SaveAnalysis persists the AI verdict for a token using a nested transaction (Wallets + TokenAnalysis)
-func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdict string, score int) error {
+func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -52,14 +52,15 @@ func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdi
 
 	// Stage 2: UPSERT Token Analysis linked by creatorID
 	analysisQuery := `
-		INSERT INTO token_analysis (mint_address, creator_id, verdict, rug_score, processed_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO token_analysis (mint_address, creator_id, verdict, rug_score, reason, processed_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (mint_address) DO UPDATE SET
 			verdict = EXCLUDED.verdict,
 			rug_score = EXCLUDED.rug_score,
+			reason = EXCLUDED.reason,
 			processed_at = EXCLUDED.processed_at;
 	`
-	_, err = tx.ExecContext(ctx, analysisQuery, mint, creatorID, verdict, score, time.Now())
+	_, err = tx.ExecContext(ctx, analysisQuery, mint, creatorID, verdict, score, reason, time.Now())
 	if err != nil {
 		log.Error().Err(err).Str("mint", mint).Msg("Transaction failed: Token Analysis UPSERT error")
 		return err
@@ -76,7 +77,7 @@ func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdi
 }
 
 // GetAnalysis retrieves the token verdict utilizing a Look-Aside Caching Strategy with Upstash Redis
-func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string) (*proto.VerdictResponse, error) {
+func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string, isPaid bool) (*proto.VerdictResponse, error) {
 	cacheKey := fmt.Sprintf("token_verdict:%s", mint)
 
 	// 1. Cache Check (Look-Aside)
@@ -96,14 +97,14 @@ func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string) (*proto.
 
 	// 2. Cache Miss: Query Database
 	query := `
-		SELECT verdict, rug_score
+		SELECT verdict, rug_score, reason
 		FROM token_analysis
 		WHERE mint_address = $1
 	`
-	var verdict string
+	var verdict, reason string
 	var score int32
 
-	err := r.db.QueryRowContext(ctx, query, mint).Scan(&verdict, &score)
+	err := r.db.QueryRowContext(ctx, query, mint).Scan(&verdict, &score, &reason)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("analysis not found for mint: %s", mint)
@@ -115,6 +116,7 @@ func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string) (*proto.
 	resp := &proto.VerdictResponse{
 		Score:   score,
 		Verdict: verdict,
+		Reason:  reason,
 	}
 
 	// 3. Cache Miss Recovery: Store result in Redis configured with 5-minute TTL

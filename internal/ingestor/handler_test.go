@@ -21,7 +21,7 @@ func TestHeliusWebhookHandler_Valid(t *testing.T) {
 	pub := NewPublisher()
 	defer pub.Shutdown()
 
-	router := SetupRouter(pub, nil)
+	router := SetupRouter(pub, nil, nil)
 
 	body := []byte(`{"transaction": "sol123", "type": "transfer", "amount": 100}`)
 	req, _ := http.NewRequest(http.MethodPost, "/webhook/helius", bytes.NewBuffer(body))
@@ -37,7 +37,7 @@ func TestHeliusWebhookHandler_Valid(t *testing.T) {
 
 func TestHealthCheck(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := SetupRouter(nil, nil) // Publisher and Repo not needed for health
+	router := SetupRouter(nil, nil, nil) // Publisher and Repo not needed for health
 
 	req, _ := http.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -56,7 +56,7 @@ func TestHeliusWebhookHandler_Backpressure(t *testing.T) {
 	// Fill the channel
 	pub.PublishChan <- []byte("initial")
 
-	router := SetupRouter(pub, nil)
+	router := SetupRouter(pub, nil, nil)
 
 	body := []byte(`{"data": "second"}`)
 	req, _ := http.NewRequest(http.MethodPost, "/webhook/helius", bytes.NewBuffer(body))
@@ -79,7 +79,7 @@ func TestHeliusWebhookHandler_BodyError(t *testing.T) {
 	pub := NewPublisher()
 	defer pub.Shutdown()
 
-	router := SetupRouter(pub, nil)
+	router := SetupRouter(pub, nil, nil)
 
 	req, _ := http.NewRequest(http.MethodPost, "/webhook/helius", errorReader{})
 	w := httptest.NewRecorder()
@@ -98,11 +98,11 @@ func TestTokenAnalysisHandler_Success(t *testing.T) {
 
 	repo := repository.NewTokenRepository(db, nil) // Mocking without Redis cache
 
-	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint123").
-		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score"}).AddRow("SAFE", 90))
+		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason"}).AddRow("SAFE", 90, "LP Burned"))
 
-	router := SetupRouter(nil, repo)
+	router := SetupRouter(nil, repo, nil)
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
 	w := httptest.NewRecorder()
@@ -121,11 +121,11 @@ func TestTokenAnalysisHandler_NotFound(t *testing.T) {
 
 	repo := repository.NewTokenRepository(db, nil)
 
-	mock.ExpectQuery(`SELECT verdict, rug_score FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint404").
 		WillReturnError(sql.ErrNoRows)
 
-	router := SetupRouter(nil, repo)
+	router := SetupRouter(nil, repo, nil)
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint404", nil)
 	w := httptest.NewRecorder()
@@ -139,6 +139,6 @@ func TestTokenAnalysisHandler_MissingMint(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	// Don't set params (mint is empty)
-	TokenAnalysisHandler(c, nil)
+	TokenAnalysisHandler(c, nil, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

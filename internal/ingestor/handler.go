@@ -7,13 +7,14 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"itswork.app/internal/repository"
+	"itswork.app/internal/pay"
 
 	sentrygin "github.com/getsentry/sentry-go/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 // SetupRouter initializes the Gin engine and creates the routes.
-func SetupRouter(pub *Publisher, repo *repository.TokenRepository) *gin.Engine {
+func SetupRouter(pub *Publisher, repo *repository.TokenRepository, payRepo *repository.PaymentRepository) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
@@ -36,7 +37,16 @@ func SetupRouter(pub *Publisher, repo *repository.TokenRepository) *gin.Engine {
 	})
 
 	r.GET("/api/v1/token/:mint", func(c *gin.Context) {
-		TokenAnalysisHandler(c, repo)
+		TokenAnalysisHandler(c, repo, payRepo)
+	})
+
+	payService := pay.NewPayService()
+	r.POST("/api/v1/pay/create", func(c *gin.Context) {
+		CreatePaymentHandler(c, payService, payRepo)
+	})
+
+	r.GET("/api/v1/pay/verify/:reference", func(c *gin.Context) {
+		VerifyPaymentHandler(c, payService, payRepo)
 	})
 
 	return r
@@ -65,22 +75,40 @@ func HeliusWebhookHandler(c *gin.Context, pub *Publisher) {
 }
 
 // TokenAnalysisHandler processes requests to retrieve the AI verdict of a token.
-func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository) {
+func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payRepo *repository.PaymentRepository) {
 	mint := c.Param("mint")
 	if mint == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mint parameter"})
 		return
 	}
 
-	resp, err := repo.GetAnalysis(c.Request.Context(), mint)
+	// Access Control: Identify user via Clerk Header (Mocked for now in header X-User-Id)
+	userID := c.GetHeader("X-User-Id")
+	isPaid := false
+	if userID != "" {
+		isPaid = payRepo.IsPaid(c.Request.Context(), userID, mint)
+	}
+
+	resp, err := repo.GetAnalysis(c.Request.Context(), mint, isPaid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	// Gated Response Logic
+	result := gin.H{
 		"mint":    mint,
 		"score":   resp.Score,
 		"verdict": resp.Verdict,
-	})
+		"is_paid": isPaid,
+	}
+
+	if isPaid {
+		result["reason"] = resp.Reason
+		// In the future, we can add more heuristic details here
+	} else {
+		result["reason"] = "Details locked. Please pay to unlock full AI reasoning."
+	}
+
+	c.JSON(http.StatusOK, result)
 }

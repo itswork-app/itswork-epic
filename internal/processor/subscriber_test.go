@@ -29,7 +29,7 @@ type mockRepo struct {
 	err error
 }
 
-func (m *mockRepo) SaveAnalysis(ctx context.Context, mint, creator, verdict string, score int) error {
+func (m *mockRepo) SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error {
 	return m.err
 }
 
