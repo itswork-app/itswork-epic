@@ -218,3 +218,17 @@ func TestDeductCredit_Atomic(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, success)
 }
+
+func TestIsProSubscriber_CacheHit(t *testing.T) {
+	mr, rdb := setupTestRedis(t)
+	defer mr.Close()
+
+	repo := NewPaymentRepository(nil, rdb)
+	ctx := context.Background()
+
+	err := mr.Set("sub_active:user123", "true")
+	assert.NoError(t, err)
+
+	active := repo.IsProSubscriber(ctx, "user123")
+	assert.True(t, active)
+}
