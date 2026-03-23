@@ -114,7 +114,6 @@ func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService
 	if err := payRepo.SavePayment(c.Request.Context(), payment); err != nil {
 		log.Error().Err(err).Str("user", userID).Str("plan", planType).Msg("Failed to save pending sub record")
 	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"payment_url": payURL,
 		"reference":   reference,

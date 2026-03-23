@@ -276,7 +276,6 @@ func TestCreateBundlePaymentHandler_Success(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO payments").
 		WithArgs("user123", "BUNDLE_50", sqlmock.AnyArg(), "pending", 0.4).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-bundle"))
-
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/bundle?type=BUNDLE_50", nil)
@@ -307,7 +306,6 @@ func TestCreateSubscriptionPaymentHandler_Success(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO payments").
 		WithArgs("user123", "SUB_MONTHLY_PRO", sqlmock.AnyArg(), "pending", 0.25).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-sub"))
-
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/subscribe?plan=SUB_MONTHLY_PRO", nil)
