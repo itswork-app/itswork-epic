@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	
+
 	"github.com/rs/zerolog/log"
 )
 
 const (
-	JupiterAPIURL      = "https://api.jup.ag/price/v2?ids=SOL"
-	RedisPriceKey      = "solana_cutoff_price"
-	HardFallbackPrice  = 91.2
+	JupiterAPIURL     = "https://api.jup.ag/price/v2?ids=SOL"
+	RedisPriceKey     = "solana_cutoff_price"
+	HardFallbackPrice = 91.2
 )
 
 type JupiterPriceResponse struct {
@@ -34,7 +34,7 @@ func (s *PayService) GetSolPriceUSD(ctx context.Context) float64 {
 	resp, err := httpClient.Get(JupiterAPIURL)
 	if err == nil && resp.StatusCode == http.StatusOK {
 		var jupResp JupiterPriceResponse
-		if err := json.NewDecoder(resp.Body).Decode(&jupResp); err == nil {
+		if decodeErr := json.NewDecoder(resp.Body).Decode(&jupResp); decodeErr == nil {
 			if solData, ok := jupResp.Data["SOL"]; ok {
 				price, err := strconv.ParseFloat(solData.Price, 64)
 				if err == nil && price > 0 {

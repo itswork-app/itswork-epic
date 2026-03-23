@@ -14,7 +14,12 @@ import (
 )
 
 // SetupRouter initializes the Gin engine and creates the routes.
-func SetupRouter(pub *Publisher, repo *repository.TokenRepository, payRepo *repository.PaymentRepository, payService *pay.PayService) *gin.Engine {
+func SetupRouter(
+	pub *Publisher,
+	repo *repository.TokenRepository,
+	payRepo *repository.PaymentRepository,
+	payService *pay.PayService,
+) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
