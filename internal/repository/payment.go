@@ -67,7 +67,9 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 		} else if mint == "BUNDLE_100" {
 			_ = r.AddUserCredits(ctx, userID, 100)
 		} else if mint == "SUB_MONTHLY_PRO" {
-			_ = r.ActivateSubscription(ctx, userID, "active")
+			_ = r.ActivateSubscription(ctx, userID, "active", 30)
+		} else if mint == "SUB_WEEKLY_PRO" {
+			_ = r.ActivateSubscription(ctx, userID, "active", 7)
 		}
 
 		// 2. Cache the successful access in Redis for 1 hour
@@ -236,17 +238,22 @@ func (r *PaymentRepository) AddUserCredits(ctx context.Context, userID string, a
 }
 
 // ActivateSubscription activates or extends a user subscription
-func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, status string) error {
+func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, status string, durationDays int) error {
+	if durationDays <= 0 {
+		log.Error().Str("user", userID).Int("duration", durationDays).Msg("Invalid subscription duration")
+		return fmt.Errorf("invalid subscription duration: %d", durationDays)
+	}
+
 	query := `
 		INSERT INTO user_subscriptions (user_id, status, expires_at)
-		VALUES ($1, $2, now() + interval '30 days')
+		VALUES ($1, $2, now() + interval '1 day' * $3)
 		ON CONFLICT (user_id) DO UPDATE
 		SET status = $2, expires_at = CASE 
-			WHEN user_subscriptions.expires_at > now() THEN user_subscriptions.expires_at + interval '30 days'
-			ELSE now() + interval '30 days'
+			WHEN user_subscriptions.expires_at > now() THEN user_subscriptions.expires_at + interval '1 day' * $3
+			ELSE now() + interval '1 day' * $3
 		END, updated_at = now()
 	`
-	_, err := r.db.ExecContext(ctx, query, userID, status)
+	_, err := r.db.ExecContext(ctx, query, userID, status, durationDays)
 	if err != nil {
 		log.Error().Err(err).Str("user", userID).Msg("Failed to activate subscription")
 	}
