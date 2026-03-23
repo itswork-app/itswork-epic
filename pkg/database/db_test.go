@@ -24,3 +24,8 @@ func TestInitDBWithDriver_Mock(t *testing.T) {
 	db.Close()
 	_, _ = InitDBWithDriver("sqlmock", "mock_dsn")
 }
+
+func TestInitDBWithDriver_OpenError(t *testing.T) {
+	_, err := InitDBWithDriver("invalid_driver_xyz", "dsn")
+	assert.Error(t, err)
+}

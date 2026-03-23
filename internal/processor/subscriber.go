@@ -7,9 +7,14 @@ import (
 
 	"cloud.google.com/go/pubsub/v2" // Standardized to use v2 across project
 	"github.com/rs/zerolog/log"
+	"google.golang.org/api/option"
 
 	"itswork.app/api/proto"
 )
+
+var newPubsubClient = func(ctx context.Context, projectID string, opts ...option.ClientOption) (*pubsub.Client, error) {
+	return pubsub.NewClient(ctx, projectID, opts...)
+}
 
 // Brainger defines the interface for AI analysis calls
 type Brainger interface {
@@ -73,7 +78,7 @@ func InitSubscriber(brainClient Brainger, repo VaultRepository) (*Subscriber, er
 	}
 
 	ctx := context.Background()
-	client, err := pubsub.NewClient(ctx, projectID)
+	client, err := newPubsubClient(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +86,11 @@ func InitSubscriber(brainClient Brainger, repo VaultRepository) (*Subscriber, er
 	apiKey := os.Getenv("HELIUS_API_KEY")
 	enricher := NewEnricher(apiKey)
 
-	sub := client.Subscriber(subID)
+	var sub PubSubSubscriber
+	if client != nil {
+		sub = client.Subscriber(subID)
+	}
+
 	s := NewSubscriber(brainClient, repo, sub, enricher)
 	s.client = client
 	return s, nil

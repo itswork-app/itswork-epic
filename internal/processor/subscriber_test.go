@@ -5,8 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"cloud.google.com/go/pubsub/v2"
+	pubsub "cloud.google.com/go/pubsub/v2"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/api/option"
 
 	"itswork.app/api/proto"
 )
@@ -99,15 +100,86 @@ func TestSubscriber_Start(t *testing.T) {
 	s.Start()
 }
 
+func TestSubscriber_Start_Nil(t *testing.T) {
+	s := NewSubscriber(nil, nil, nil, nil)
+	s.Start() // branches to "Subscriber is nil, skipping"
+}
+
+func TestSubscriber_Start_Error(t *testing.T) {
+	sub := &mockPubSubSub{receiveErr: assert.AnError}
+	s := NewSubscriber(nil, nil, sub, nil)
+	s.Start()
+}
+
 func TestSubscriber_Shutdown(t *testing.T) {
 	s := NewSubscriber(nil, nil, nil, nil)
 	s.Shutdown()
 }
 
 func TestInitSubscriber_Error(t *testing.T) {
-	// Should fail because no credentials in test env
+	os.Unsetenv("PROJECT_ID")
+	os.Unsetenv("SUB_ID")
 	_, err := InitSubscriber(nil, nil)
 	assert.Error(t, err)
+}
+
+func TestInitSubscriber_CustomKeys(t *testing.T) {
+	os.Setenv("PROJECT_ID", "test-project")
+	os.Setenv("SUB_ID", "test-sub")
+	defer os.Unsetenv("PROJECT_ID")
+	defer os.Unsetenv("SUB_ID")
+	// Will still fail without auth, but covers the assignment branches
+	InitSubscriber(nil, nil)
+}
+
+func TestInitSubscriber_Defaults(t *testing.T) {
+	os.Setenv("PROJECT_ID", "")
+	os.Setenv("SUB_ID", "")
+	// Defaults will be picked: "itswork-epic" and "helius-ingestion-sub"
+	_, _ = InitSubscriber(nil, nil)
+}
+
+func TestInitSubscriber_ClientError(t *testing.T) {
+	old := newPubsubClient
+	defer func() { newPubsubClient = old }()
+	newPubsubClient = func(ctx context.Context, projectID string, opts ...option.ClientOption) (*pubsub.Client, error) {
+		return nil, assert.AnError
+	}
+	_, err := InitSubscriber(nil, nil)
+	assert.Error(t, err)
+}
+
+func TestInitSubscriber_MockSuccess(t *testing.T) {
+	old := newPubsubClient
+	defer func() { newPubsubClient = old }()
+	newPubsubClient = func(ctx context.Context, projectID string, opts ...option.ClientOption) (*pubsub.Client, error) {
+		return nil, nil // Return nil client to avoid real connection checks
+	}
+
+	s, err := InitSubscriber(nil, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, s)
+	s.Shutdown()
+}
+
+func TestInitSubscriber_WithClient(t *testing.T) {
+	old := newPubsubClient
+	defer func() { newPubsubClient = old }()
+	newPubsubClient = func(ctx context.Context, projectID string, opts ...option.ClientOption) (*pubsub.Client, error) {
+		return pubsub.NewClient(ctx, "test-p", option.WithoutAuthentication(), option.WithEndpoint("localhost:8085"))
+	}
+	s, err := InitSubscriber(nil, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, s)
+	s.Shutdown()
+}
+
+func TestSubscriber_Shutdown_WithClient(t *testing.T) {
+	ctx := context.Background()
+	client, _ := pubsub.NewClient(ctx, "test-p", option.WithoutAuthentication(), option.WithEndpoint("localhost:8085"))
+	s := NewSubscriber(nil, nil, nil, nil)
+	s.client = client
+	s.Shutdown()
 }
 
 func TestNewBrainClient_Error(t *testing.T) {

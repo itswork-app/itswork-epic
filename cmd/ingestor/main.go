@@ -6,8 +6,10 @@ import (
 	"itswork.app/internal/app"
 )
 
+var runMain = app.RunMain
+
 func main() {
-	if err := app.RunMain(); err != nil {
+	if err := runMain(); err != nil {
 		log.Fatal("Application failed:", err)
 	}
 }

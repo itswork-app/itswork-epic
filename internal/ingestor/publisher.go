@@ -8,11 +8,21 @@ import (
 
 	"cloud.google.com/go/pubsub/v2"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/api/option"
 )
+
+var newPubsubClient = func(ctx context.Context, projectID string, opts ...option.ClientOption) (*pubsub.Client, error) {
+	return pubsub.NewClient(ctx, projectID, opts...)
+}
+
+type Topic interface {
+	Publish(ctx context.Context, msg *pubsub.Message) *pubsub.PublishResult
+	Stop()
+}
 
 type Publisher struct {
 	client      *pubsub.Client
-	topicPub    *pubsub.Publisher
+	topicPub    Topic
 	PublishChan chan []byte
 	wg          sync.WaitGroup
 	ctx         context.Context
@@ -33,7 +43,7 @@ func NewPublisher() *Publisher {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Init PubSub Client (Credential ditarik native dari Auth Provider GCP Run)
-	client, err := pubsub.NewClient(ctx, projectID)
+	client, err := newPubsubClient(ctx, projectID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create PubSub client")
 	}
@@ -76,7 +86,7 @@ func (p *Publisher) worker(id int) {
 		case <-p.ctx.Done():
 			return
 		case data := <-p.PublishChan:
-			if p.topicPub == nil {
+			if p.topicPub == nil || isNil(p.topicPub) {
 				log.Debug().Msg("PubSub topic nil, message dropped")
 				continue
 			}
@@ -104,11 +114,22 @@ func (p *Publisher) Shutdown() {
 	log.Info().Msg("Initiating Publisher graceful shutdown...")
 	p.cancel()
 	p.wg.Wait()
-	if p.topicPub != nil {
+	if p.topicPub != nil && !isNil(p.topicPub) {
 		p.topicPub.Stop() // Flushes remaining messages gracefully
 	}
 	if p.client != nil {
 		p.client.Close()
 	}
 	log.Info().Msg("Publisher shutdown complete")
+}
+
+func isNil(i interface{}) bool {
+	if i == nil {
+		return true
+	}
+	switch v := i.(type) {
+	case *pubsub.Publisher:
+		return v == nil
+	}
+	return false
 }

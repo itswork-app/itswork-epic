@@ -67,3 +67,14 @@ func TestRunMain_Fail(t *testing.T) {
 	// Should fail because of invalid DSN in InitDB
 	assert.Error(t, err)
 }
+
+func TestMainExecution(t *testing.T) {
+	oldRunMain := runMain
+	defer func() { runMain = oldRunMain }()
+
+	runMain = func(opts ...app.AppOptions) error {
+		return nil // mock success
+	}
+
+	main()
+}
