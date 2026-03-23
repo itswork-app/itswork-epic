@@ -11,13 +11,13 @@ import (
 )
 
 type Payment struct {
-	ID           string
-	UserID       string
-	MintAddress  string
-	Reference    string
-	Status       string
-	AmountSol    float64
-	CreatedAt    time.Time
+	ID          string
+	UserID      string
+	MintAddress string
+	Reference   string
+	Status      string
+	AmountSol   float64
+	CreatedAt   time.Time
 }
 
 type PaymentRepository struct {
