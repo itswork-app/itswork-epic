@@ -15,13 +15,13 @@ func TestGeneratePaymentURL(t *testing.T) {
 	os.Setenv("PROJECT_WALLET_ADDRESS", "7nEByo6E1RzE1H31RE8RE7RE8RE7RE8RE7RE8RE7RE8")
 	os.Setenv("SCAN_PRICE_SOL", "0.1")
 
-	s := NewPayService()
-	url, ref := s.GeneratePaymentURL("mint123")
+	s := NewPayService(nil)
+	url, ref, amount := s.GeneratePaymentURL(context.Background(), "mint123")
 
 	assert.NotEmpty(t, url)
 	assert.NotEmpty(t, ref)
 	assert.Contains(t, url, "solana:7nEByo6E1")
-	assert.Contains(t, url, "amount=0.1")
+	assert.Contains(t, url, "amount="+amount)
 	assert.Contains(t, url, "reference="+ref)
 }
 
@@ -55,7 +55,7 @@ func TestVerifyTransaction_MockParams(t *testing.T) {
 	defer ts.Close()
 
 	os.Setenv("HELIUS_API_KEY", "test-key")
-	s := NewPayService()
+	s := NewPayService(nil)
 	s.BaseURL = ts.URL
 
 	success, err := s.VerifyTransaction(context.Background(), "ref123")
@@ -79,7 +79,7 @@ func TestVerifyTransaction_NoSignature(t *testing.T) {
 	defer ts.Close()
 
 	os.Setenv("HELIUS_API_KEY", "test-key")
-	s := NewPayService()
+	s := NewPayService(nil)
 	s.BaseURL = ts.URL
 
 	success, err := s.VerifyTransaction(context.Background(), "ref123")
@@ -115,7 +115,7 @@ func TestVerifyTransaction_FailedTx(t *testing.T) {
 	defer ts.Close()
 
 	os.Setenv("HELIUS_API_KEY", "test-key")
-	s := NewPayService()
+	s := NewPayService(nil)
 	s.BaseURL = ts.URL
 
 	success, err := s.VerifyTransaction(context.Background(), "ref123")
@@ -124,7 +124,7 @@ func TestVerifyTransaction_FailedTx(t *testing.T) {
 }
 
 func TestVerifyTransaction_NoKey(t *testing.T) {
-	s := NewPayService()
+	s := NewPayService(nil)
 	s.HeliusAPIKey = ""
 	success, err := s.VerifyTransaction(context.Background(), "ref123")
 	assert.Error(t, err)
@@ -133,7 +133,7 @@ func TestVerifyTransaction_NoKey(t *testing.T) {
 
 func TestVerifyTransaction_NetworkError(t *testing.T) {
 	os.Setenv("HELIUS_API_KEY", "test-key")
-	s := NewPayService()
+	s := NewPayService(nil)
 	s.BaseURL = "http://localhost:0" // invalid port logic prevents dial
 
 	success, err := s.VerifyTransaction(context.Background(), "ref123")
@@ -149,7 +149,7 @@ func TestVerifyTransaction_BadJSON(t *testing.T) {
 	defer ts.Close()
 
 	os.Setenv("HELIUS_API_KEY", "test-key")
-	s := NewPayService()
+	s := NewPayService(nil)
 	s.BaseURL = ts.URL
 
 	success, err := s.VerifyTransaction(context.Background(), "ref123")
@@ -174,7 +174,7 @@ func TestVerifyTransaction_TxNotFinalized(t *testing.T) {
 	defer ts.Close()
 
 	os.Setenv("HELIUS_API_KEY", "test-key")
-	s := NewPayService()
+	s := NewPayService(nil)
 	s.BaseURL = ts.URL
 
 	success, err := s.VerifyTransaction(context.Background(), "ref123")
@@ -184,30 +184,30 @@ func TestVerifyTransaction_TxNotFinalized(t *testing.T) {
 
 func TestGenerateBundlePaymentURL(t *testing.T) {
 	os.Setenv("PROJECT_WALLET_ADDRESS", "7nEByo6E1RzE1H31RE8RE7RE8RE7RE8RE7RE8RE7RE8")
-	s := NewPayService()
+	s := NewPayService(nil)
 
 	// Test BUNDLE_50
-	url, ref := s.GenerateBundlePaymentURL("user123", "BUNDLE_50")
+	url, ref, _ := s.GenerateBundlePaymentURL(context.Background(), "user123", "BUNDLE_50")
 	assert.NotEmpty(t, url)
 	assert.NotEmpty(t, ref)
-	assert.Contains(t, url, "amount=0.4")
+	assert.Contains(t, url, "amount=0.3838")
 	assert.Contains(t, url, "memo=BUNDLE%3ABUNDLE_50%3Auser123%3A"+ref)
 
 	// Test BUNDLE_100
-	url, ref = s.GenerateBundlePaymentURL("user123", "BUNDLE_100")
+	url, ref, _ = s.GenerateBundlePaymentURL(context.Background(), "user123", "BUNDLE_100")
 	assert.NotEmpty(t, ref)
-	assert.Contains(t, url, "amount=0.7")
+	assert.Contains(t, url, "amount=0.6579")
 	assert.Contains(t, url, "memo=BUNDLE%3ABUNDLE_100%3Auser123%3A"+ref)
 }
 
 func TestGenerateSubscriptionPaymentURL(t *testing.T) {
 	os.Setenv("PROJECT_WALLET_ADDRESS", "7nEByo6E1RzE1H31RE8RE7RE8RE7RE8RE7RE8RE7RE8")
-	s := NewPayService()
+	s := NewPayService(nil)
 
 	// Test SUB_MONTHLY_PRO
-	url, ref := s.GenerateSubscriptionPaymentURL("user123", "SUB_MONTHLY_PRO")
+	url, ref, _ := s.GenerateSubscriptionPaymentURL(context.Background(), "user123", "SUB_MONTHLY_PRO")
 	assert.NotEmpty(t, url)
 	assert.NotEmpty(t, ref)
-	assert.Contains(t, url, "amount=0.25")
+	assert.Contains(t, url, "amount=0.5373")
 	assert.Contains(t, url, "memo=SUBSCRIPTION%3ASUB_MONTHLY_PRO%3Auser123%3A"+ref)
 }

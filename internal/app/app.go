@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"itswork.app/internal/ingestor"
+	"itswork.app/internal/pay"
 	"itswork.app/internal/processor"
 	"itswork.app/internal/repository"
 	"itswork.app/pkg/cache"
@@ -86,7 +87,8 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 		sub = processor.NewSubscriber(brainClient, repo, nil, nil)
 	}
 
-	router := ingestor.SetupRouter(pub, repo, payRepo)
+	payService := pay.NewPayService(redisClient)
+	router := ingestor.SetupRouter(pub, repo, payRepo, payService)
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: router,
