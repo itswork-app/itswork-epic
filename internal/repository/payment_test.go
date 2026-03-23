@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -106,7 +107,20 @@ func TestIsPaid_CacheMiss_DBHit(t *testing.T) {
 	repo := NewPaymentRepository(db, rdb)
 	ctx := context.Background()
 
-	mock.ExpectQuery("SELECT COUNT").
+	// 1. Subscription check fails
+	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	// 2. Credit check fails (no credits)
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE user_credits").
+		WithArgs("user123").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
+
+	// 3. Eceran check success
+	mock.ExpectQuery("SELECT COUNT(.*) FROM payments").
 		WithArgs("user123", "mint456").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
@@ -116,4 +130,91 @@ func TestIsPaid_CacheMiss_DBHit(t *testing.T) {
 	// Verify it was cached
 	val, _ := rdb.Get(ctx, "payment_verified:user123:mint456").Result()
 	assert.Equal(t, "true", val)
+}
+func TestIsPaid_Subscription(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	paid := repo.IsPaid(ctx, "user123", "mint456")
+	assert.True(t, paid)
+}
+
+func TestIsPaid_Credit(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	// 1. Subscription check fails
+	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	// 2. Credit deduction success
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE user_credits").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(9))
+	mock.ExpectCommit()
+
+	paid := repo.IsPaid(ctx, "user123", "mint456")
+	assert.True(t, paid)
+}
+
+func TestIsPaid_UsageLimitExceeded(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	// 1. Subscription check fails
+	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	// 2. Credit check fails (no credits)
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE user_credits").
+		WithArgs("user123").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
+
+	// 3. Eceran check fails
+	mock.ExpectQuery("SELECT COUNT(.*) FROM payments").
+		WithArgs("user123", "mint456").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	paid := repo.IsPaid(ctx, "user123", "mint456")
+	assert.False(t, paid)
+}
+
+func TestDeductCredit_Atomic(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE user_credits").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(49))
+	mock.ExpectCommit()
+
+	success, err := repo.DeductCredit(ctx, "user123")
+	assert.NoError(t, err)
+	assert.True(t, success)
 }

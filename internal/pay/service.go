@@ -34,18 +34,66 @@ func NewPayService() *PayService {
 	}
 }
 
-// GeneratePaymentURL creates a Solana Pay compliant URL: solana:<address>?amount=<amount>&reference=<reference>
+// GeneratePaymentURL creates a Solana Pay compliant URL for single scans
 func (s *PayService) GeneratePaymentURL(mint string) (string, string) {
 	reference := uuid.New().String()
 
-	// Format: solana:7nEByo6E1...RE8?amount=0.1&reference=UUID&label=ItsWork%20Scan
 	address := s.ProjectWallet
 	amount := s.ScanPrice
 	label := url.QueryEscape("ItsWork AI Analysis")
-	memo := url.QueryEscape(fmt.Sprintf("Scan for %s", mint))
+	memo := url.QueryEscape(fmt.Sprintf("SCAN:%s", mint)) // Prefix for identification
 
 	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
 		address, amount, reference, label, memo)
+
+	return solanaURL, reference
+}
+
+// GenerateBundlePaymentURL creates a URL for purchasing credit bundles
+func (s *PayService) GenerateBundlePaymentURL(userID, bundleType string) (string, string) {
+	reference := uuid.New().String()
+	address := s.ProjectWallet
+
+	var amount string
+	var label string
+	switch bundleType {
+	case "BUNDLE_50":
+		amount = "4.5" // Example price for 50 scans (inclyding discount)
+		label = "ItsWork 50 Credits"
+	case "BUNDLE_100":
+		amount = "8.0" // Example price for 100 scans
+		label = "ItsWork 100 Credits"
+	default:
+		amount = s.ScanPrice
+		label = "ItsWork Credits"
+	}
+
+	memo := url.QueryEscape(fmt.Sprintf("BUNDLE:%s:%s", bundleType, userID))
+	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
+		address, amount, reference, url.QueryEscape(label), memo)
+
+	return solanaURL, reference
+}
+
+// GenerateSubscriptionPaymentURL creates a URL for monthly subscription
+func (s *PayService) GenerateSubscriptionPaymentURL(userID, planType string) (string, string) {
+	reference := uuid.New().String()
+	address := s.ProjectWallet
+
+	var amount string
+	var label string
+	switch planType {
+	case "SUB_MONTHLY_PRO":
+		amount = "25.0" // Example monthly price
+		label = "ItsWork Monthly Pro"
+	default:
+		amount = "25.0"
+		label = "ItsWork Subscription"
+	}
+
+	memo := url.QueryEscape(fmt.Sprintf("SUBSCRIPTION:%s:%s", planType, userID))
+	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
+		address, amount, reference, url.QueryEscape(label), memo)
 
 	return solanaURL, reference
 }

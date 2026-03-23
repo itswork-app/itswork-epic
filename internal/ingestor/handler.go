@@ -107,7 +107,7 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 		result["reason"] = resp.Reason
 		// In the future, we can add more heuristic details here
 	} else {
-		result["reason"] = "Details locked. Please pay to unlock full AI reasoning."
+		result["reason"] = "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning."
 	}
 
 	c.JSON(http.StatusOK, result)
