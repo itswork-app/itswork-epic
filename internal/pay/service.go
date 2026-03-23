@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	PriceSingleUSD   = 1.5
-	PriceBundle50USD = 35.0
-	PriceWeeklyUSD   = 15.0
-	PriceMonthlyUSD  = 49.0
+	PriceSingleUSD    = 1.5
+	PriceBundle50USD  = 35.0
+	PriceBundle100USD = 60.0
+	PriceWeeklyUSD    = 15.0
+	PriceMonthlyUSD   = 49.0
 )
 
 type PayService struct {
@@ -97,7 +98,7 @@ func (s *PayService) GenerateBundlePaymentURL(ctx context.Context, userID, bundl
 		label = "ItsWork 50 Credits"
 	case "BUNDLE_100":
 		// Let's assume B100 is 60 USD (discounted from 70).
-		amount = ConvertUSDToSOL(60.0, solPrice)
+		amount = ConvertUSDToSOL(PriceBundle100USD, solPrice)
 		label = "ItsWork 100 Credits"
 	default:
 		amount = ConvertUSDToSOL(PriceSingleUSD, solPrice)
