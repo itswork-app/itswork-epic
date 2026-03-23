@@ -144,7 +144,7 @@ func TestVerifyTransaction_NetworkError(t *testing.T) {
 func TestVerifyTransaction_BadJSON(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{bad json`))
+		_, _ = w.Write([]byte(`{bad json`))
 	}))
 	defer ts.Close()
 

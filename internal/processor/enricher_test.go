@@ -121,7 +121,7 @@ func TestEnricher_Enrich_NoSignatures(t *testing.T) {
 func TestEnricher_Enrich_BadJSON(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{bad json`))
+		_, _ = w.Write([]byte(`{bad json`))
 	}))
 	defer ts.Close()
 

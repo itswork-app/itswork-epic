@@ -66,10 +66,10 @@ itswork.app/internal/processor/subscriber.go:115.2,115.31 1 1
 itswork.app/internal/processor/subscriber.go:115.31,119.3 3 1
 itswork.app/internal/processor/subscriber.go:121.2,124.23 2 1
 itswork.app/internal/processor/subscriber.go:124.23,126.3 1 0
-itswork.app/internal/processor/subscriber.go:129.2,138.16 2 1
-itswork.app/internal/processor/subscriber.go:138.16,142.3 3 1
-itswork.app/internal/processor/subscriber.go:145.2,146.16 2 1
-itswork.app/internal/processor/subscriber.go:146.16,151.3 2 1
-itswork.app/internal/processor/subscriber.go:154.2,162.11 2 1
-itswork.app/internal/processor/subscriber.go:165.33,168.21 3 1
-itswork.app/internal/processor/subscriber.go:168.21,170.3 1 0
+itswork.app/internal/processor/subscriber.go:128.2,137.16 2 1
+itswork.app/internal/processor/subscriber.go:137.16,141.3 3 1
+itswork.app/internal/processor/subscriber.go:144.2,145.16 2 1
+itswork.app/internal/processor/subscriber.go:145.16,150.3 2 1
+itswork.app/internal/processor/subscriber.go:153.2,161.11 2 1
+itswork.app/internal/processor/subscriber.go:164.33,167.21 3 1
+itswork.app/internal/processor/subscriber.go:167.21,169.3 1 0
