@@ -83,7 +83,7 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 	sub, err := processor.InitSubscriber(brainClient, repo)
 	if err != nil {
 		log.Warn().Err(err).Msg("Subscriber init failed - normal in restricted test envs")
-		sub = processor.NewSubscriber(brainClient, repo, nil)
+		sub = processor.NewSubscriber(brainClient, repo, nil, nil)
 	}
 
 	router := ingestor.SetupRouter(pub, repo, payRepo)

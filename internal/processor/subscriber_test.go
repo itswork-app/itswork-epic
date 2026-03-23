@@ -37,7 +37,7 @@ func TestSubscriber_HandleMessage_Success(t *testing.T) {
 	brain := &mockBrainger{}
 	repo := &mockRepo{}
 
-	s := NewSubscriber(brain, repo, nil)
+	s := NewSubscriber(brain, repo, nil, nil)
 
 	data := []byte(`{"mint_address": "MINT1", "creator_address": "CREA1"}`)
 	msg := &pubsub.Message{
@@ -49,7 +49,7 @@ func TestSubscriber_HandleMessage_Success(t *testing.T) {
 }
 
 func TestSubscriber_HandleMessage_InvalidJSON(t *testing.T) {
-	s := NewSubscriber(nil, nil, nil)
+	s := NewSubscriber(nil, nil, nil, nil)
 	msg := &pubsub.Message{
 		Data: []byte(`{invalid`),
 	}
@@ -58,7 +58,7 @@ func TestSubscriber_HandleMessage_InvalidJSON(t *testing.T) {
 }
 
 func TestSubscriber_HandleMessage_EmptyMint(t *testing.T) {
-	s := NewSubscriber(nil, nil, nil)
+	s := NewSubscriber(nil, nil, nil, nil)
 	msg := &pubsub.Message{
 		Data: []byte(`{"mint_address": ""}`),
 	}
@@ -68,7 +68,7 @@ func TestSubscriber_HandleMessage_EmptyMint(t *testing.T) {
 func TestSubscriber_HandleMessage_BrainError(t *testing.T) {
 	brain := &mockBrainger{err: context.DeadlineExceeded}
 	repo := &mockRepo{}
-	s := NewSubscriber(brain, repo, nil)
+	s := NewSubscriber(brain, repo, nil, nil)
 	msg := &pubsub.Message{
 		Data: []byte(`{"mint_address": "MINT1", "creator_address": "CREA1"}`),
 	}
@@ -78,7 +78,7 @@ func TestSubscriber_HandleMessage_BrainError(t *testing.T) {
 func TestSubscriber_HandleMessage_RepoError(t *testing.T) {
 	brain := &mockBrainger{}
 	repo := &mockRepo{err: context.DeadlineExceeded}
-	s := NewSubscriber(brain, repo, nil)
+	s := NewSubscriber(brain, repo, nil, nil)
 	msg := &pubsub.Message{
 		Data: []byte(`{"mint_address": "MINT1", "creator_address": "CREA1"}`),
 	}
@@ -95,12 +95,12 @@ func (m *mockPubSubSub) Receive(ctx context.Context, f func(context.Context, *pu
 
 func TestSubscriber_Start(t *testing.T) {
 	sub := &mockPubSubSub{}
-	s := NewSubscriber(nil, nil, sub)
+	s := NewSubscriber(nil, nil, sub, nil)
 	s.Start()
 }
 
 func TestSubscriber_Shutdown(t *testing.T) {
-	s := NewSubscriber(nil, nil, nil)
+	s := NewSubscriber(nil, nil, nil, nil)
 	s.Shutdown()
 }
 

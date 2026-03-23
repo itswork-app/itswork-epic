@@ -44,17 +44,19 @@ type Subscriber struct {
 	subscriber  PubSubSubscriber
 	brainClient Brainger
 	repo        VaultRepository
+	enricher    *Enricher
 	ctx         context.Context
 	cancel      context.CancelFunc
 }
 
-func NewSubscriber(brainClient Brainger, repo VaultRepository, subscriber PubSubSubscriber) *Subscriber {
+func NewSubscriber(brainClient Brainger, repo VaultRepository, subscriber PubSubSubscriber, enricher *Enricher) *Subscriber {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Subscriber{
 		subscriber:  subscriber,
 		brainClient: brainClient,
 		repo:        repo,
+		enricher:    enricher,
 		ctx:         ctx,
 		cancel:      cancel,
 	}
@@ -76,8 +78,11 @@ func InitSubscriber(brainClient Brainger, repo VaultRepository) (*Subscriber, er
 		return nil, err
 	}
 
+	apiKey := os.Getenv("HELIUS_API_KEY")
+	enricher := NewEnricher(apiKey)
+
 	sub := client.Subscriber(subID)
-	s := NewSubscriber(brainClient, repo, sub)
+	s := NewSubscriber(brainClient, repo, sub, enricher)
 	s.client = client
 	return s, nil
 }
@@ -114,6 +119,11 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 	}
 
 	log.Debug().Str("mint", payload.MintAddress).Msg("Processing token from Pub/Sub...")
+
+	// Enrich the payload with real on-chain data before sending to Brain
+	if s.enricher != nil {
+		s.enricher.Enrich(ctx, &payload)
+	}
 
 	// Invoke gRPC AnalyzeToken to Python Brain with REAL data from Ingestor
 	resp, err := s.brainClient.AnalyzeToken(
