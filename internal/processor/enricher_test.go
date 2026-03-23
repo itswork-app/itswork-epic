@@ -72,7 +72,11 @@ func TestEnricher_Enrich_SuccessMock(t *testing.T) {
 		} else if method == "getAsset" {
 			_, _ = w.Write([]byte(`{
 				"result": {
-					"authorities": []
+					"authorities": [],
+					"content": {
+						"metadata": {"uri": "https://arweave.net/123"},
+						"links": {"twitter": "https://x.com/itswork"}
+					}
 				},
 				"error": null
 			}`))
@@ -92,6 +96,8 @@ func TestEnricher_Enrich_SuccessMock(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, payload.CreatorWalletAgeHours > 0)
 	assert.True(t, payload.IsLpBurned)
+	assert.True(t, payload.IsRenounced)
+	assert.True(t, payload.HasSocials)
 	assert.Equal(t, float32(50), payload.Top10HolderConcentrationPercent)
 }
 

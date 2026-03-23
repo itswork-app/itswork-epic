@@ -66,6 +66,17 @@ func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 		payload.FundingSourceCheckPassed = fundingPassed
 	}
 
+	// Enrich 4: IsRenounced & HasSocials
+	assetData, err := e.fetchAssetData(ctx, rpcURL, payload.MintAddress)
+	if err != nil {
+		log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Failed to fetch asset data for renouncement/socials")
+		payload.IsRenounced = false // Pessimistic fallback
+		payload.HasSocials = false
+	} else {
+		payload.IsRenounced = e.parseRenounced(assetData)
+		payload.HasSocials = e.parseSocials(assetData)
+	}
+
 	return nil
 }
 
@@ -122,6 +133,70 @@ func (e *Enricher) fetchWalletAge(ctx context.Context, rpcURL, address string) (
 	}
 
 	return ageHours, nil
+}
+
+func (e *Enricher) fetchAssetData(ctx context.Context, rpcURL, mint string) (map[string]interface{}, error) {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getAsset",
+		"params": map[string]interface{}{
+			"id": mint,
+		},
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var res struct {
+		Result map[string]interface{} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+	return res.Result, nil
+}
+
+func (e *Enricher) parseRenounced(asset map[string]interface{}) bool {
+	authorities, ok := asset["authorities"].([]interface{})
+	if !ok || len(authorities) == 0 {
+		return true
+	}
+	// If any authority exists, it's not fully renounced
+	return false
+}
+
+func (e *Enricher) parseSocials(asset map[string]interface{}) bool {
+	content, ok := asset["content"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	metadata, ok := content["metadata"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	uri, _ := metadata["uri"].(string)
+	if uri == "" {
+		return false
+	}
+
+	// Heuristic: Check if URI or links contain common social patterns
+	// Helius getAsset also sometimes includes 'links'
+	links, ok := content["links"].(map[string]interface{})
+	if ok && len(links) > 0 {
+		return true
+	}
+
+	// Basic check on description or other fields if available
+	return false
 }
 
 func (e *Enricher) checkLpBurned(ctx context.Context, rpcURL, mint string) (bool, error) {
