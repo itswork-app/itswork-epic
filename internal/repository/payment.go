@@ -64,13 +64,25 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 	if status == "success" {
 		// 1. Fulfillment Logic
 		if mint == "BUNDLE_50" {
-			_ = r.AddUserCredits(ctx, userID, 50)
+			if err := r.AddUserCredits(ctx, userID, 50); err != nil {
+				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: AddUserCredits 50")
+				sentry.CaptureException(err)
+			}
 		} else if mint == "BUNDLE_100" {
-			_ = r.AddUserCredits(ctx, userID, 100)
+			if err := r.AddUserCredits(ctx, userID, 100); err != nil {
+				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: AddUserCredits 100")
+				sentry.CaptureException(err)
+			}
 		} else if mint == "SUB_MONTHLY_PRO" {
-			_ = r.ActivateSubscription(ctx, userID, "active", 30)
+			if err := r.ActivateSubscription(ctx, userID, "active", 30); err != nil {
+				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Monthly")
+				sentry.CaptureException(err)
+			}
 		} else if mint == "SUB_WEEKLY_PRO" {
-			_ = r.ActivateSubscription(ctx, userID, "active", 7)
+			if err := r.ActivateSubscription(ctx, userID, "active", 7); err != nil {
+				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Weekly")
+				sentry.CaptureException(err)
+			}
 		}
 
 		// 2. Cache the successful access in Redis for 1 hour

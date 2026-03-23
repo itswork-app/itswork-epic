@@ -57,6 +57,15 @@ func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 		payload.IsLpBurned = lpSafe
 	}
 
+	// Enrich 3: FundingSourceCheckPassed
+	fundingPassed, err := e.checkFunding(ctx, rpcURL, payload.CreatorAddress)
+	if err != nil {
+		log.Error().Err(err).Str("creator", payload.CreatorAddress).Msg("Failed to enrich funding status")
+		payload.FundingSourceCheckPassed = true // Fallback to true if RPC fails to avoid false negatives
+	} else {
+		payload.FundingSourceCheckPassed = fundingPassed
+	}
+
 	return nil
 }
 
@@ -159,5 +168,118 @@ func (e *Enricher) checkLpBurned(ctx context.Context, rpcURL, mint string) (bool
 		return true, nil
 	}
 
+	return false, nil
+}
+
+// Known Exchanges for Solana
+var KnownExchanges = map[string]string{
+	"5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9": "Binance",
+	"GJRs4FwHtemZ5ZE9x3FNvJ8TMwitKTh21yxdRPqn7npE": "Coinbase",
+	"is6MTRHEgyFLNTfYcuV4QBWLjrZBfmhVNYR6ccgr8KV": "OKX",
+}
+
+func (e *Enricher) checkFunding(ctx context.Context, rpcURL, address string) (bool, error) {
+	// 1. Get transaction signatures back to the start
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getSignaturesForAddress",
+		"params": []interface{}{
+			address,
+			map[string]interface{}{"limit": 10}, // We just need the very oldest one in a batch of 10 usually
+		},
+	}
+
+	bodyBytes, _ := json.Marshal(reqBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return true, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return true, err
+	}
+	defer resp.Body.Close()
+
+	var sigRes struct {
+		Result []struct {
+			Signature string `json:"signature"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&sigRes); err != nil {
+		return true, err
+	}
+
+	if len(sigRes.Result) == 0 {
+		return true, nil // No transactions = no funding yet
+	}
+
+	// The last one is the oldest in this set
+	oldestSig := sigRes.Result[len(sigRes.Result)-1].Signature
+
+	// 2. Get transaction details to find the sender
+	txReqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getTransaction",
+		"params": []interface{}{
+			oldestSig,
+			map[string]interface{}{
+				"encoding":                       "jsonParsed",
+				"maxSupportedTransactionVersion": 0,
+			},
+		},
+	}
+
+	txBodyBytes, _ := json.Marshal(txReqBody)
+	txReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(txBodyBytes))
+	txReq.Header.Set("Content-Type", "application/json")
+
+	txResp, err := e.client.Do(txReq)
+	if err != nil {
+		return true, err
+	}
+	defer txResp.Body.Close()
+
+	var txRes struct {
+		Result struct {
+			Transaction struct {
+				Message struct {
+					AccountKeys []struct {
+						Pubkey string `json:"pubkey"`
+						Signer bool   `json:"signer"`
+					} `json:"accountKeys"`
+				} `json:"message"`
+			} `json:"transaction"`
+		} `json:"result"`
+	}
+
+	if err := json.NewDecoder(txResp.Body).Decode(&txRes); err != nil {
+		return true, err
+	}
+
+	// The first signer is typicaly the funder for a SOL transfer
+	var firstSigner string
+	for _, acc := range txRes.Result.Transaction.Message.AccountKeys {
+		if acc.Signer {
+			firstSigner = acc.Pubkey
+			break
+		}
+	}
+
+	if firstSigner == "" {
+		return true, nil
+	}
+
+	// Check if the signer is a known exchange
+	if _, ok := KnownExchanges[firstSigner]; ok {
+		log.Info().Str("exchange", KnownExchanges[firstSigner]).Str("creator", address).Msg("Creator funded by known exchange")
+		return true, nil
+	}
+
+	// Common rugger pattern: funded by a fresh personal wallet
+	log.Warn().Str("funder", firstSigner).Str("creator", address).Msg("Creator funded by non-exchange wallet (potential serial rugger)")
 	return false, nil
 }

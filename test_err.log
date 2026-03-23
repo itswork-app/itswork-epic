@@ -1,0 +1,63 @@
+{"level":"error","error":"pubsub(publisher): credentials: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information","time":"2026-03-23T22:53:12+07:00","message":"Failed to create PubSub client"}
+{"level":"info","time":"2026-03-23T22:53:12+07:00","message":"Initiating Publisher graceful shutdown..."}
+{"level":"debug","time":"2026-03-23T22:53:12+07:00","message":"PubSub topic nil, message dropped"}
+{"level":"info","time":"2026-03-23T22:53:12+07:00","message":"Publisher shutdown complete"}
+{"level":"warn","time":"2026-03-23T22:53:12+07:00","message":"Publisher channel is full, dropping/delaying webhook"}
+{"level":"error","error":"pubsub(publisher): credentials: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information","time":"2026-03-23T22:53:12+07:00","message":"Failed to create PubSub client"}
+{"level":"error","error":"forced read error","time":"2026-03-23T22:53:12+07:00","message":"Failed to read raw body"}
+{"level":"info","time":"2026-03-23T22:53:12+07:00","message":"Initiating Publisher graceful shutdown..."}
+{"level":"info","time":"2026-03-23T22:53:12+07:00","message":"Publisher shutdown complete"}
+{"level":"info","user":"user123","mint":"mint123","usage_type":"SINGLE_PAY","time":"2026-03-23T22:53:12+07:00","message":"Access granted"}
+{"level":"info","user":"user123","mint":"mint404","usage_type":"SUBSCRIPTION","time":"2026-03-23T22:53:12+07:00","message":"Access granted"}
+{"level":"error","time":"2026-03-23T22:53:13+07:00","message":"Jupiter API failed, falling back to Redis cutoff"}
+{"level":"warn","fallback":91.2,"time":"2026-03-23T22:53:13+07:00","message":"Using Hard Fallback Price ($91.2)"}
+{"level":"error","error":"Query '\n\t\tINSERT INTO payments (user_id, mint_address, reference_key, status, amount_sol)\n\t\tVALUES ($1, $2, $3, $4, $5)\n\t\tRETURNING id;\n\t', arguments do not match: argument 4 expected [float64 - 0.1] does not match actual [float64 - 0.0164]","user":"user123","mint":"mint123","time":"2026-03-23T22:53:13+07:00","message":"Failed to save payment record"}
+--- FAIL: TestCreatePaymentHandler_Success (0.49s)
+    pay_handler_test.go:41: 
+        	Error Trace:	/home/kangza/workspace/Itswork-epic/internal/ingestor/pay_handler_test.go:41
+        	Error:      	Not equal: 
+        	            	expected: 200
+        	            	actual  : 500
+        	Test:       	TestCreatePaymentHandler_Success
+    pay_handler_test.go:45: 
+        	Error Trace:	/home/kangza/workspace/Itswork-epic/internal/ingestor/pay_handler_test.go:45
+        	Error:      	Should NOT be empty, but was <nil>
+        	Test:       	TestCreatePaymentHandler_Success
+    pay_handler_test.go:46: 
+        	Error Trace:	/home/kangza/workspace/Itswork-epic/internal/ingestor/pay_handler_test.go:46
+        	Error:      	Should NOT be empty, but was <nil>
+        	Test:       	TestCreatePaymentHandler_Success
+{"level":"info","reference_key":"ref123","signature":"sig123","time":"2026-03-23T22:53:13+07:00","message":"Real On-Chain Payment Verified"}
+{"level":"info","reference_key":"ref123","signature":"sig123","time":"2026-03-23T22:53:13+07:00","message":"Real On-Chain Payment Verified"}
+{"level":"error","time":"2026-03-23T22:53:13+07:00","message":"Jupiter API failed, falling back to Redis cutoff"}
+{"level":"warn","fallback":91.2,"time":"2026-03-23T22:53:13+07:00","message":"Using Hard Fallback Price ($91.2)"}
+{"level":"error","error":"assert.AnError general error for testing","user":"user123","mint":"mint123","time":"2026-03-23T22:53:13+07:00","message":"Failed to save payment record"}
+{"level":"info","reference_key":"ref123","signature":"sig123","time":"2026-03-23T22:53:13+07:00","message":"Real On-Chain Payment Verified"}
+{"level":"info","reference_key":"ref123","signature":"sig123","time":"2026-03-23T22:53:13+07:00","message":"Real On-Chain Payment Verified"}
+{"level":"error","error":"assert.AnError general error for testing","ref":"ref123","time":"2026-03-23T22:53:13+07:00","message":"Failed to update payment status in DB"}
+{"level":"error","error":"HELIUS_API_KEY not configured","ref":"ref123","time":"2026-03-23T22:53:13+07:00","message":"On-chain verification failed"}
+{"level":"info","reference_key":"ref123","signature":"sig123","time":"2026-03-23T22:53:13+07:00","message":"Real On-Chain Payment Verified"}
+{"level":"info","reference_key":"ref123","signature":"sig123","time":"2026-03-23T22:53:13+07:00","message":"Real On-Chain Payment Verified"}
+{"level":"error","error":"assert.AnError general error for testing","ref":"ref123","time":"2026-03-23T22:53:13+07:00","message":"Failed to update payment status in DB"}
+{"level":"error","time":"2026-03-23T22:53:14+07:00","message":"Jupiter API failed, falling back to Redis cutoff"}
+{"level":"warn","fallback":91.2,"time":"2026-03-23T22:53:14+07:00","message":"Using Hard Fallback Price ($91.2)"}
+{"level":"error","error":"Query '\n\t\tINSERT INTO payments (user_id, mint_address, reference_key, status, amount_sol)\n\t\tVALUES ($1, $2, $3, $4, $5)\n\t\tRETURNING id;\n\t', arguments do not match: argument 4 expected [float64 - 0.4] does not match actual [float64 - 0.3838]","user":"user123","mint":"BUNDLE_50","time":"2026-03-23T22:53:14+07:00","message":"Failed to save payment record"}
+{"level":"error","error":"Query '\n\t\tINSERT INTO payments (user_id, mint_address, reference_key, status, amount_sol)\n\t\tVALUES ($1, $2, $3, $4, $5)\n\t\tRETURNING id;\n\t', arguments do not match: argument 4 expected [float64 - 0.4] does not match actual [float64 - 0.3838]","user":"user123","mint":"BUNDLE_50","time":"2026-03-23T22:53:14+07:00","message":"Failed to save pending payment record"}
+{"level":"error","time":"2026-03-23T22:53:14+07:00","message":"Jupiter API failed, falling back to Redis cutoff"}
+{"level":"warn","fallback":91.2,"time":"2026-03-23T22:53:14+07:00","message":"Using Hard Fallback Price ($91.2)"}
+{"level":"error","error":"Query '\n\t\tINSERT INTO payments (user_id, mint_address, reference_key, status, amount_sol)\n\t\tVALUES ($1, $2, $3, $4, $5)\n\t\tRETURNING id;\n\t', arguments do not match: argument 4 expected [float64 - 0.25] does not match actual [float64 - 0.5373]","user":"user123","mint":"SUB_MONTHLY_PRO","time":"2026-03-23T22:53:14+07:00","message":"Failed to save payment record"}
+{"level":"error","error":"Query '\n\t\tINSERT INTO payments (user_id, mint_address, reference_key, status, amount_sol)\n\t\tVALUES ($1, $2, $3, $4, $5)\n\t\tRETURNING id;\n\t', arguments do not match: argument 4 expected [float64 - 0.25] does not match actual [float64 - 0.5373]","user":"user123","plan":"SUB_MONTHLY_PRO","time":"2026-03-23T22:53:14+07:00","message":"Failed to save pending sub record"}
+{"level":"info","time":"2026-03-23T22:53:14+07:00","message":"Initiating Publisher graceful shutdown..."}
+{"level":"info","time":"2026-03-23T22:53:14+07:00","message":"Publisher shutdown complete"}
+{"level":"error","error":"assert.AnError general error for testing","time":"2026-03-23T22:53:14+07:00","message":"Failed to create PubSub client"}
+{"level":"info","time":"2026-03-23T22:53:14+07:00","message":"Initiating Publisher graceful shutdown..."}
+{"level":"info","time":"2026-03-23T22:53:14+07:00","message":"Publisher shutdown complete"}
+{"level":"error","error":"pubsub(publisher): credentials: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information","time":"2026-03-23T22:53:14+07:00","message":"Failed to create PubSub client"}
+{"level":"info","time":"2026-03-23T22:53:14+07:00","message":"Initiating Publisher graceful shutdown..."}
+{"level":"info","time":"2026-03-23T22:53:14+07:00","message":"Publisher shutdown complete"}
+{"level":"error","error":"pubsub(publisher): credentials: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information","time":"2026-03-23T22:53:14+07:00","message":"Failed to create PubSub client"}
+{"level":"info","time":"2026-03-23T22:53:14+07:00","message":"Initiating Publisher graceful shutdown..."}
+{"level":"info","time":"2026-03-23T22:53:14+07:00","message":"Publisher shutdown complete"}
+FAIL
+FAIL	itswork.app/internal/ingestor	1.492s
+FAIL

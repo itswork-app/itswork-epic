@@ -2,6 +2,7 @@ package ingestor
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
@@ -62,6 +63,17 @@ func SetupRouter(
 
 // HeliusWebhookHandler processes incoming webhooks immediately passing to channels.
 func HeliusWebhookHandler(c *gin.Context, pub *Publisher) {
+	// Security: Verify WEBHOOK_SECRET
+	secret := os.Getenv("WEBHOOK_SECRET")
+	authHeader := c.GetHeader("Authorization")
+	apiKeyParam := c.Query("api-key")
+
+	if secret != "" && authHeader != secret && apiKeyParam != secret {
+		log.Warn().Str("ip", c.ClientIP()).Msg("Unauthorized webhook attempt")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	// Directly consume RawData (bytes) to avoid latency of JSON Bindings here
 	payload, err := c.GetRawData()
 	if err != nil {
