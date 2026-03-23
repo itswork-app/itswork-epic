@@ -67,6 +67,8 @@ func VerifyPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 	if success {
 		if updateErr := payRepo.UpdatePaymentStatus(c.Request.Context(), reference, "success"); updateErr != nil {
 			log.Error().Err(updateErr).Str("ref", reference).Msg("Failed to update payment status in DB")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update payment records"})
+			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Payment verified and analysis unlocked"})
 	} else {
