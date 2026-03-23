@@ -195,6 +195,7 @@ func TestGenerateBundlePaymentURL(t *testing.T) {
 
 	// Test BUNDLE_100
 	url, ref = s.GenerateBundlePaymentURL("user123", "BUNDLE_100")
+	assert.NotEmpty(t, ref)
 	assert.Contains(t, url, "amount=8.0")
 	assert.Contains(t, url, "memo=BUNDLE%3ABUNDLE_100%3Auser123")
 }
