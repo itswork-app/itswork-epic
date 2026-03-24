@@ -29,8 +29,9 @@ export function SearchBar() {
         score: data.score || 0,
         verdict: data.verdict || "UNKNOWN",
       });
-    } catch (err: any) {
-      setError(err.message || "Auditing service currently unavailable.");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Auditing service currently unavailable.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

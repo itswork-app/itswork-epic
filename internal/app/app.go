@@ -85,7 +85,7 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 	}
 
 	payService := pay.NewPayService(redisClient, payRepo, authRepo)
-	
+
 	// PR-NEXUS-V1-PERFECTION: Shared Enricher for both Reactive and Proactive pipelines
 	apiKey := os.Getenv("HELIUS_API_KEY")
 	enricher := processor.NewEnricher(apiKey, repo.GetRedis())

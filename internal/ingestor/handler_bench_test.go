@@ -5,11 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"time"
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
-	"github.com/DATA-DOG/go-sqlmock"
+	"time"
 
 	"itswork.app/internal/processor"
 	"itswork.app/internal/repository"
@@ -34,7 +34,9 @@ func BenchmarkSniperVerdictHandler(b *testing.B) {
 
 	db, mock, _ := sqlmock.New()
 	defer db.Close()
-	mock.ExpectQuery("SELECT .* FROM user_subscriptions").WillReturnRows(sqlmock.NewRows([]string{"plan_type", "status", "quota_limit", "current_usage", "expires_at"}).AddRow("FREE", "active", 10, 0, time.Now().Add(24*time.Hour)))
+	mock.ExpectQuery("SELECT .* FROM user_subscriptions").
+		WillReturnRows(sqlmock.NewRows([]string{"plan_type", "status", "quota_limit", "current_usage", "expires_at"}).
+			AddRow("FREE", "active", 10, 0, time.Now().Add(24*time.Hour)))
 
 	payRepo := repository.NewPaymentRepository(db, rdb)
 
