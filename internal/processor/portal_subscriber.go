@@ -107,11 +107,11 @@ func (s *PortalSubscriber) connectAndListen(ctx context.Context) error {
 			continue
 		}
 
-		go s.handleMessage(pm)
+		go s.HandleMessage(pm)
 	}
 }
 
-func (s *PortalSubscriber) handleMessage(pm PortalMessage) {
+func (s *PortalSubscriber) HandleMessage(pm PortalMessage) {
 	if pm.TxType == "create" {
 		s.handleNewToken(pm)
 		return

@@ -57,29 +57,35 @@
 				
 				<option value="file0">itswork.app/cmd/ingestor/main.go (50.0%)</option>
 				
-				<option value="file1">itswork.app/internal/app/app.go (90.1%)</option>
+				<option value="file1">itswork.app/internal/app/app.go (89.6%)</option>
 				
-				<option value="file2">itswork.app/internal/ingestor/handler.go (90.7%)</option>
+				<option value="file2">itswork.app/internal/ingestor/handler.go (85.9%)</option>
 				
-				<option value="file3">itswork.app/internal/ingestor/pay_handler.go (100.0%)</option>
+				<option value="file3">itswork.app/internal/ingestor/middleware.go (29.4%)</option>
 				
-				<option value="file4">itswork.app/internal/ingestor/publisher.go (96.0%)</option>
+				<option value="file4">itswork.app/internal/ingestor/pay_handler.go (85.7%)</option>
 				
-				<option value="file5">itswork.app/internal/pay/service.go (59.0%)</option>
+				<option value="file5">itswork.app/internal/ingestor/publisher.go (96.0%)</option>
 				
-				<option value="file6">itswork.app/internal/processor/enricher.go (89.1%)</option>
+				<option value="file6">itswork.app/internal/pay/oracle.go (41.4%)</option>
 				
-				<option value="file7">itswork.app/internal/processor/grpc_client.go (95.0%)</option>
+				<option value="file7">itswork.app/internal/pay/service.go (86.3%)</option>
 				
-				<option value="file8">itswork.app/internal/processor/subscriber.go (96.4%)</option>
+				<option value="file8">itswork.app/internal/processor/enricher.go (87.1%)</option>
 				
-				<option value="file9">itswork.app/internal/repository/payment.go (87.5%)</option>
+				<option value="file9">itswork.app/internal/processor/grpc_client.go (95.0%)</option>
 				
-				<option value="file10">itswork.app/internal/repository/token_analysis.go (94.1%)</option>
+				<option value="file10">itswork.app/internal/processor/portal_subscriber.go (53.3%)</option>
 				
-				<option value="file11">itswork.app/pkg/cache/redis.go (100.0%)</option>
+				<option value="file11">itswork.app/internal/processor/subscriber.go (96.4%)</option>
 				
-				<option value="file12">itswork.app/pkg/database/db.go (86.7%)</option>
+				<option value="file12">itswork.app/internal/repository/payment.go (80.0%)</option>
+				
+				<option value="file13">itswork.app/internal/repository/token_analysis.go (94.1%)</option>
+				
+				<option value="file14">itswork.app/pkg/cache/redis.go (100.0%)</option>
+				
+				<option value="file15">itswork.app/pkg/database/db.go (86.7%)</option>
 				
 				</select>
 			</div>
@@ -126,6 +132,7 @@ import (
         "github.com/rs/zerolog/log"
 
         "itswork.app/internal/ingestor"
+        "itswork.app/internal/pay"
         "itswork.app/internal/processor"
         "itswork.app/internal/repository"
         "itswork.app/pkg/cache"
@@ -146,6 +153,7 @@ type App struct {
         BrainClient *processor.BrainClient
         Sub         *processor.Subscriber
         PayRepo     *repository.PaymentRepository
+        PortalSub   *processor.PortalSubscriber
         Server      *http.Server
         Port        string
 }
@@ -198,7 +206,9 @@ func SetupApp(opts ...AppOptions) (*App, error) <span class="cov8" title="1">{
                 sub = processor.NewSubscriber(brainClient, repo, nil, nil)
         }</span>
 
-        <span class="cov8" title="1">router := ingestor.SetupRouter(pub, repo, payRepo)
+        <span class="cov8" title="1">payService := pay.NewPayService(redisClient)
+        portalSub := processor.NewPortalSubscriber(redisClient, brainClient)
+        router := ingestor.SetupRouter(pub, repo, payRepo, payService, portalSub)
         srv := &amp;http.Server{
                 Addr:    ":" + port,
                 Handler: router,
@@ -211,6 +221,7 @@ func SetupApp(opts ...AppOptions) (*App, error) <span class="cov8" title="1">{
                 BrainClient: brainClient,
                 Sub:         sub,
                 PayRepo:     payRepo,
+                PortalSub:   portalSub,
                 Server:      srv,
                 Port:        port,
         }, nil</span>
@@ -218,8 +229,14 @@ func SetupApp(opts ...AppOptions) (*App, error) <span class="cov8" title="1">{
 
 func (a *App) Run() <span class="cov8" title="1">{
         go a.Sub.Start()
-
         go func() </span><span class="cov8" title="1">{
+                ctx := context.Background() // Use an appropriate context if needed
+                if err := a.PortalSub.Start(ctx); err != nil </span><span class="cov0" title="0">{
+                        log.Error().Err(err).Msg("PortalSubscriber exited with error")
+                }</span>
+        }()
+
+        <span class="cov8" title="1">go func() </span><span class="cov8" title="1">{
                 log.Info().Str("port", a.Port).Msg("Server listening on port")
                 if err := a.Server.ListenAndServe(); err != nil &amp;&amp; !errors.Is(err, http.ErrServerClosed) </span><span class="cov0" title="0">{
                         log.Error().Err(err).Msg("Failed to listen and serve")
@@ -306,19 +323,29 @@ func RunMain(opts ...AppOptions) error <span class="cov8" title="1">{
 
 import (
         "net/http"
+        "os"
 
         "github.com/gin-gonic/gin"
         "github.com/rs/zerolog/log"
 
         "itswork.app/internal/pay"
+        "itswork.app/internal/processor"
         "itswork.app/internal/repository"
 
         sentrygin "github.com/getsentry/sentry-go/gin"
         "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
+var AuthMiddleware = ClerkMiddleware()
+
 // SetupRouter initializes the Gin engine and creates the routes.
-func SetupRouter(pub *Publisher, repo *repository.TokenRepository, payRepo *repository.PaymentRepository) *gin.Engine <span class="cov8" title="1">{
+func SetupRouter(
+        pub *Publisher,
+        repo *repository.TokenRepository,
+        payRepo *repository.PaymentRepository,
+        payService *pay.PayService,
+        portalSub *processor.PortalSubscriber,
+) *gin.Engine <span class="cov8" title="1">{
         gin.SetMode(gin.ReleaseMode)
 
         r := gin.New()
@@ -340,26 +367,75 @@ func SetupRouter(pub *Publisher, repo *repository.TokenRepository, payRepo *repo
                 c.JSON(http.StatusOK, gin.H{"status": "ok"})
         }</span>)
 
-        <span class="cov8" title="1">r.GET("/api/v1/token/:mint", func(c *gin.Context) </span><span class="cov8" title="1">{
-                TokenAnalysisHandler(c, repo, payRepo)
-        }</span>)
+        <span class="cov8" title="1">api := r.Group("/api/v1")
+        api.Use(AuthMiddleware)
+        </span><span class="cov8" title="1">{
+                api.GET("/token/:mint", func(c *gin.Context) </span><span class="cov8" title="1">{
+                        TokenAnalysisHandler(c, repo, payRepo)
+                }</span>)
 
-        <span class="cov8" title="1">payService := pay.NewPayService()
-        r.POST("/api/v1/pay/create", func(c *gin.Context) </span><span class="cov0" title="0">{
-                CreatePaymentHandler(c, payService, payRepo)
-        }</span>)
+                <span class="cov8" title="1">api.GET("/pay/verify/:reference", func(c *gin.Context) </span><span class="cov0" title="0">{
+                        VerifyPaymentHandler(c, payService, payRepo)
+                }</span>)
 
-        <span class="cov8" title="1">r.GET("/api/v1/pay/verify/:reference", func(c *gin.Context) </span><span class="cov0" title="0">{
-                VerifyPaymentHandler(c, payService, payRepo)
-        }</span>)
+                <span class="cov8" title="1">api.POST("/pay/bundle", func(c *gin.Context) </span><span class="cov0" title="0">{
+                        CreateBundlePaymentHandler(c, payService, payRepo)
+                }</span>)
+
+                <span class="cov8" title="1">api.POST("/api/v1/pay/subscribe", func(c *gin.Context) </span><span class="cov0" title="0">{
+                        CreateSubscriptionPaymentHandler(c, payService, payRepo)
+                }</span>)
+
+                // --- SNIPER ENGINE: LOW LATENCY ---
+                <span class="cov8" title="1">api.GET("/sniper/verdict/:mint", func(c *gin.Context) </span><span class="cov0" title="0">{
+                        SniperVerdictHandler(c, portalSub)
+                }</span>)
+        }
 
         <span class="cov8" title="1">return r</span>
 }
 
+func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber) <span class="cov8" title="1">{
+        mint := c.Param("mint")
+        if mint == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mint"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">state, ok := portalSub.GetSniperVerdict(mint)
+        if !ok </span><span class="cov8" title="1">{
+                // Attempt to fetch from Redis if not in local map
+                // But instructions say &lt; 50ms, usually local map or Redis is fine.
+                // The subscriber already pushes to Redis, so let's stick to the subscriber's GetSniperVerdict or direct Redis.
+                c.JSON(http.StatusNotFound, gin.H{"error": "Token not being tracked or not found in Pump Portal stream"})
+                return
+        }</span>
+
+        // Minimalist High-Speed JSON Output
+        <span class="cov8" title="1">c.JSON(http.StatusOK, gin.H{
+                "mint":             state.Mint,
+                "bonding_progress": state.LastProgress,
+                "dev_sniped":       state.DevSniped,
+                "trade_velocity":   state.TradesPerMin,
+                "is_momentum":      state.IsHighMomentum,
+        })</span>
+}
+
 // HeliusWebhookHandler processes incoming webhooks immediately passing to channels.
 func HeliusWebhookHandler(c *gin.Context, pub *Publisher) <span class="cov8" title="1">{
+        // Security: Verify WEBHOOK_SECRET
+        secret := os.Getenv("WEBHOOK_SECRET")
+        authHeader := c.GetHeader("Authorization")
+        apiKeyParam := c.Query("api-key")
+
+        if secret != "" &amp;&amp; authHeader != secret &amp;&amp; apiKeyParam != secret </span><span class="cov0" title="0">{
+                log.Warn().Str("ip", c.ClientIP()).Msg("Unauthorized webhook attempt")
+                c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+                return
+        }</span>
+
         // Directly consume RawData (bytes) to avoid latency of JSON Bindings here
-        payload, err := c.GetRawData()
+        <span class="cov8" title="1">payload, err := c.GetRawData()
         if err != nil </span><span class="cov8" title="1">{
                 log.Error().Err(err).Msg("Failed to read raw body")
                 c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid body payload"})
@@ -386,39 +462,119 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
                 return
         }</span>
 
-        // Access Control: Identify user via Clerk Header (Mocked for now in header X-User-Id)
-        <span class="cov8" title="1">userID := c.GetHeader("X-User-Id")
+        // Access Control: Identify user via Clerk JWT
+        <span class="cov8" title="1">userID := GetUserID(c)
         isPaid := false
-        if userID != "" </span><span class="cov0" title="0">{
+        if userID != "" </span><span class="cov8" title="1">{
                 isPaid = payRepo.IsPaid(c.Request.Context(), userID, mint)
         }</span>
 
-        <span class="cov8" title="1">resp, err := repo.GetAnalysis(c.Request.Context(), mint, isPaid)
+        <span class="cov8" title="1">if !isPaid </span><span class="cov8" title="1">{
+                c.JSON(http.StatusPaymentRequired, gin.H{
+                        "error":  "Insufficient Credits",
+                        "reason": "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning.",
+                })
+                return
+        }</span>
+
+        <span class="cov8" title="1">resp, err := repo.GetAnalysis(c.Request.Context(), mint, true)
         if err != nil </span><span class="cov8" title="1">{
                 c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
                 return
         }</span>
 
-        // Gated Response Logic
-        <span class="cov8" title="1">result := gin.H{
+        // Gated Response Logic (Succcess)
+        <span class="cov8" title="1">c.JSON(http.StatusOK, gin.H{
                 "mint":    mint,
                 "score":   resp.Score,
                 "verdict": resp.Verdict,
-                "is_paid": isPaid,
-        }
-
-        if isPaid </span><span class="cov0" title="0">{
-                result["reason"] = resp.Reason
-                // In the future, we can add more heuristic details here
-        }</span> else<span class="cov8" title="1"> {
-                result["reason"] = "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning."
-        }</span>
-
-        <span class="cov8" title="1">c.JSON(http.StatusOK, result)</span>
+                "is_paid": true,
+                "reason":  resp.Reason,
+        })</span>
 }
 </pre>
 		
 		<pre class="file" id="file3" style="display: none">package ingestor
+
+import (
+        "context"
+        "net/http"
+        "os"
+        "strings"
+
+        "github.com/clerk/clerk-sdk-go/v2"
+        "github.com/clerk/clerk-sdk-go/v2/jwt"
+        "github.com/clerk/clerk-sdk-go/v2/user"
+        "github.com/gin-gonic/gin"
+        "github.com/rs/zerolog/log"
+)
+
+func ClerkMiddleware() gin.HandlerFunc <span class="cov8" title="1">{
+        secretKey := os.Getenv("CLERK_SECRET_KEY")
+        if secretKey == "" </span><span class="cov8" title="1">{
+                log.Warn().Msg("CLERK_SECRET_KEY not set, auth middleware will be permissive for development (DANGER)")
+        }</span>
+        <span class="cov8" title="1">clerk.SetKey(secretKey)
+
+        return func(c *gin.Context) </span><span class="cov0" title="0">{
+                authHeader := c.GetHeader("Authorization")
+                if authHeader == "" </span><span class="cov0" title="0">{
+                        // Fallback for development if needed, but the mission is Zero Placeholder
+                        c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+                        c.Abort()
+                        return
+                }</span>
+
+                <span class="cov0" title="0">parts := strings.Split(authHeader, " ")
+                if len(parts) != 2 || parts[0] != "Bearer" </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header format"})
+                        c.Abort()
+                        return
+                }</span>
+
+                <span class="cov0" title="0">token := parts[1]
+                claims, err := jwt.Verify(c.Request.Context(), &amp;jwt.VerifyParams{
+                        Token: token,
+                })
+
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Error().Err(err).Msg("Clerk JWT verification failed")
+                        c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+                        c.Abort()
+                        return
+                }</span>
+
+                // Set UserID in context
+                <span class="cov0" title="0">userID := claims.Subject
+                c.Set("userID", userID)
+
+                // Optionally fetch full user if needed (Industrial Grade)
+                // but claims.Subject should be enough for IsPaid
+                log.Debug().Str("userID", userID).Msg("User authenticated via Clerk")
+                c.Next()</span>
+        }
+}
+
+// GetUserID is a helper to extract the authenticated user ID from the context
+func GetUserID(c *gin.Context) string <span class="cov8" title="1">{
+        val, exists := c.Get("userID")
+        if !exists </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov8" title="1">userID, ok := val.(string)
+        if !ok </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov8" title="1">return userID</span>
+}
+
+// FetchClerkUser is a helper if we ever need more than the ID
+func FetchClerkUser(ctx context.Context, userID string) (*clerk.User, error) <span class="cov0" title="0">{
+        return user.Get(ctx, userID)
+}</span>
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package ingestor
 
 import (
         "net/http"
@@ -445,9 +601,9 @@ func CreatePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
                 return
         }</span>
 
-        <span class="cov8" title="1">payURL, reference := payService.GeneratePaymentURL(mint)
+        <span class="cov8" title="1">payURL, reference, amountStr := payService.GeneratePaymentURL(c.Request.Context(), mint)
 
-        price, _ := strconv.ParseFloat(payService.ScanPrice, 64)
+        price, _ := strconv.ParseFloat(amountStr, 64)
 
         payment := &amp;repository.Payment{
                 UserID:      userID,
@@ -464,8 +620,75 @@ func CreatePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
         <span class="cov8" title="1">c.JSON(http.StatusOK, gin.H{
                 "payment_url": payURL,
                 "reference":   reference,
-                "amount":      payService.ScanPrice,
+                "amount":      amountStr,
                 "currency":    "SOL",
+        })</span>
+}
+
+// CreateBundlePaymentHandler initiates a payment for credit bundles
+func CreateBundlePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) <span class="cov8" title="1">{
+        bundleType := c.Query("type") // BUNDLE_50, BUNDLE_100
+        if bundleType == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Missing bundle type parameter"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">userID := c.GetHeader("X-User-Id")
+        if userID == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">payURL, reference, amountStr := payService.GenerateBundlePaymentURL(c.Request.Context(), userID, bundleType)
+
+        // Save pending payment record to trigger fulfillment later
+
+        amount, _ := strconv.ParseFloat(amountStr, 64)
+
+        payment := &amp;repository.Payment{
+                UserID:      userID,
+                MintAddress: bundleType,
+                Reference:   reference,
+                AmountSol:   amount,
+        }
+        if err := payRepo.SavePayment(c.Request.Context(), payment); err != nil </span><span class="cov0" title="0">{
+                log.Error().Err(err).Str("user", userID).Str("mint", bundleType).Msg("Failed to save pending payment record")
+        }</span>
+
+        <span class="cov8" title="1">c.JSON(http.StatusOK, gin.H{
+                "payment_url": payURL,
+                "reference":   reference,
+                "type":        bundleType,
+        })</span>
+}
+
+// CreateSubscriptionPaymentHandler initiates a payment for Pro subscription
+func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) <span class="cov8" title="1">{
+        planType := c.DefaultQuery("plan", "SUB_MONTHLY_PRO")
+
+        userID := c.GetHeader("X-User-Id")
+        if userID == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">payURL, reference, amountStr := payService.GenerateSubscriptionPaymentURL(c.Request.Context(), userID, planType)
+
+        // Save pending payment record
+        amount, _ := strconv.ParseFloat(amountStr, 64)
+        payment := &amp;repository.Payment{
+                UserID:      userID,
+                MintAddress: planType,
+                Reference:   reference,
+                AmountSol:   amount,
+        }
+        if err := payRepo.SavePayment(c.Request.Context(), payment); err != nil </span><span class="cov0" title="0">{
+                log.Error().Err(err).Str("user", userID).Str("plan", planType).Msg("Failed to save pending sub record")
+        }</span>
+        <span class="cov8" title="1">c.JSON(http.StatusOK, gin.H{
+                "payment_url": payURL,
+                "reference":   reference,
+                "plan":        planType,
         })</span>
 }
 
@@ -497,7 +720,7 @@ func VerifyPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 }
 </pre>
 		
-		<pre class="file" id="file4" style="display: none">package ingestor
+		<pre class="file" id="file5" style="display: none">package ingestor
 
 import (
         "context"
@@ -634,7 +857,92 @@ func isNil(i interface{}) bool <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file5" style="display: none">package pay
+		<pre class="file" id="file6" style="display: none">package pay
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "net/http"
+        "strconv"
+        "time"
+
+        "github.com/getsentry/sentry-go"
+
+        "github.com/rs/zerolog/log"
+)
+
+const (
+        JupiterAPIURL     = "https://api.jup.ag/price/v2?ids=SOL"
+        RedisPriceKey     = "solana_cutoff_price"
+        HardFallbackPrice = 91.2
+)
+
+type JupiterPriceResponse struct {
+        Data map[string]struct {
+                Price string `json:"price"`
+        } `json:"data"`
+}
+
+// GetSolPriceUSD retrieves the current SOL/USD price.
+// 1. Tries Jupiter API.
+// 2. Fallbacks to Redis cutoff (24h).
+// 3. Final fallback to $91.2.
+func (s *PayService) GetSolPriceUSD(ctx context.Context) float64 <span class="cov8" title="1">{
+        // 1. Try Jupiter API
+        resp, err := httpClient.Get(JupiterAPIURL)
+        if err == nil &amp;&amp; resp.StatusCode == http.StatusOK </span><span class="cov0" title="0">{
+                var jupResp JupiterPriceResponse
+                if decodeErr := json.NewDecoder(resp.Body).Decode(&amp;jupResp); decodeErr == nil </span><span class="cov0" title="0">{
+                        if solData, ok := jupResp.Data["SOL"]; ok </span><span class="cov0" title="0">{
+                                price, parseErr := strconv.ParseFloat(solData.Price, 64)
+                                if parseErr == nil &amp;&amp; price &gt; 0 </span><span class="cov0" title="0">{
+                                        // Update Redis cutoff
+                                        if s.Redis != nil </span><span class="cov0" title="0">{
+                                                s.Redis.Set(ctx, RedisPriceKey, solData.Price, 24*time.Hour)
+                                        }</span>
+                                        <span class="cov0" title="0">resp.Body.Close()
+                                        return price</span>
+                                }
+                        }
+                }
+                <span class="cov0" title="0">resp.Body.Close()</span>
+        }
+
+        // 2. Fallback to Redis
+        <span class="cov8" title="1">if err != nil || (resp != nil &amp;&amp; resp.StatusCode != http.StatusOK) </span><span class="cov8" title="1">{
+                log.Error().Err(err).Msg("Jupiter API failed, falling back to Redis cutoff")
+                sentry.CaptureException(fmt.Errorf("Jupiter API Failure: %v", err))
+        }</span>
+
+        <span class="cov8" title="1">if s.Redis != nil </span><span class="cov0" title="0">{
+                cutoff, err := s.Redis.Get(ctx, RedisPriceKey).Result()
+                if err == nil </span><span class="cov0" title="0">{
+                        price, err := strconv.ParseFloat(cutoff, 64)
+                        if err == nil &amp;&amp; price &gt; 0 </span><span class="cov0" title="0">{
+                                log.Info().Float64("price", price).Msg("Using Redis Cut-off Price")
+                                return price
+                        }</span>
+                }
+        }
+
+        // 3. Hard Fallback
+        <span class="cov8" title="1">log.Warn().Float64("fallback", HardFallbackPrice).Msg("Using Hard Fallback Price ($91.2)")
+        sentry.CaptureMessage(fmt.Sprintf("Using Hard Fallback Price: %f", HardFallbackPrice))
+        return HardFallbackPrice</span>
+}
+
+// ConvertUSDToSOL handles the conversion with 4 decimal precision
+func ConvertUSDToSOL(usd float64, solPrice float64) string <span class="cov8" title="1">{
+        if solPrice &lt;= 0 </span><span class="cov0" title="0">{
+                return "0.01" // Safety default
+        }</span>
+        <span class="cov8" title="1">sol := usd / solPrice
+        return fmt.Sprintf("%.4f", sol)</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package pay
 
 import (
         "bytes"
@@ -647,91 +955,132 @@ import (
         "time"
 
         "github.com/google/uuid"
+        "github.com/redis/go-redis/v9"
         "github.com/rs/zerolog/log"
 )
 
+const (
+        PriceSingleUSD    = 1.5
+        PriceBundle50USD  = 35.0
+        PriceBundle100USD = 60.0
+        PriceWeeklyUSD    = 15.0
+        PriceMonthlyUSD   = 49.0
+)
+
 type PayService struct {
-        ProjectWallet string
-        ScanPrice     string // in SOL, e.g., "0.1"
-        HeliusAPIKey  string
-        BaseURL       string
+        ProjectWallet  string
+        ScanPrice      string // in SOL, e.g., "0.1"
+        Bundle50Price  string
+        Bundle100Price string
+        SubProPrice    string
+        HeliusAPIKey   string
+        BaseURL        string
+        Redis          *redis.Client
 }
 
 var httpClient = &amp;http.Client{
         Timeout: 10 * time.Second,
 }
 
-func NewPayService() *PayService <span class="cov8" title="1">{
-        return &amp;PayService{
-                ProjectWallet: os.Getenv("PROJECT_WALLET_ADDRESS"),
-                ScanPrice:     os.Getenv("SCAN_PRICE_SOL"),
-                HeliusAPIKey:  os.Getenv("HELIUS_API_KEY"),
-                BaseURL:       "https://mainnet.helius-rpc.com",
-        }
-}</span>
+func NewPayService(rdb *redis.Client) *PayService <span class="cov8" title="1">{
+        scanPrice := os.Getenv("SCAN_PRICE_SOL")
+        if scanPrice == "" </span><span class="cov0" title="0">{
+                scanPrice = "0.01" // fallback if orbit fails
+        }</span>
+        <span class="cov8" title="1">bundle50 := os.Getenv("BUNDLE_50_PRICE_SOL")
+        if bundle50 == "" </span><span class="cov8" title="1">{
+                bundle50 = "0.4"
+        }</span>
+        <span class="cov8" title="1">bundle100 := os.Getenv("BUNDLE_100_PRICE_SOL")
+        if bundle100 == "" </span><span class="cov8" title="1">{
+                bundle100 = "0.7"
+        }</span>
+        <span class="cov8" title="1">subPro := os.Getenv("SUB_PRO_PRICE_SOL")
+        if subPro == "" </span><span class="cov8" title="1">{
+                subPro = "0.25"
+        }</span>
+
+        <span class="cov8" title="1">return &amp;PayService{
+                ProjectWallet:  os.Getenv("PROJECT_WALLET_ADDRESS"),
+                ScanPrice:      scanPrice,
+                Bundle50Price:  bundle50,
+                Bundle100Price: bundle100,
+                SubProPrice:    subPro,
+                HeliusAPIKey:   os.Getenv("HELIUS_API_KEY"),
+                BaseURL:        "https://mainnet.helius-rpc.com",
+                Redis:          rdb,
+        }</span>
+}
 
 // GeneratePaymentURL creates a Solana Pay compliant URL for single scans
-func (s *PayService) GeneratePaymentURL(mint string) (string, string) <span class="cov8" title="1">{
+func (s *PayService) GeneratePaymentURL(ctx context.Context, mint string) (string, string, string) <span class="cov8" title="1">{
         reference := uuid.New().String()
+        solPrice := s.GetSolPriceUSD(ctx)
+        amount := ConvertUSDToSOL(PriceSingleUSD, solPrice)
 
         address := s.ProjectWallet
-        amount := s.ScanPrice
         label := url.QueryEscape("ItsWork AI Analysis")
         memo := url.QueryEscape(fmt.Sprintf("SCAN:%s", mint)) // Prefix for identification
 
         solanaURL := fmt.Sprintf("solana:%s?amount=%s&amp;reference=%s&amp;label=%s&amp;memo=%s",
                 address, amount, reference, label, memo)
 
-        return solanaURL, reference
+        return solanaURL, reference, amount
 }</span>
 
 // GenerateBundlePaymentURL creates a URL for purchasing credit bundles
-func (s *PayService) GenerateBundlePaymentURL(userID, bundleType string) (string, string) <span class="cov0" title="0">{
+func (s *PayService) GenerateBundlePaymentURL(ctx context.Context, userID, bundleType string) (string, string, string) <span class="cov8" title="1">{
         reference := uuid.New().String()
         address := s.ProjectWallet
+        solPrice := s.GetSolPriceUSD(ctx)
 
         var amount string
         var label string
         switch bundleType </span>{
-        case "BUNDLE_50":<span class="cov0" title="0">
-                amount = "4.5" // Example price for 50 scans (inclyding discount)
+        case "BUNDLE_50":<span class="cov8" title="1">
+                amount = ConvertUSDToSOL(PriceBundle50USD, solPrice)
                 label = "ItsWork 50 Credits"</span>
-        case "BUNDLE_100":<span class="cov0" title="0">
-                amount = "8.0" // Example price for 100 scans
+        case "BUNDLE_100":<span class="cov8" title="1">
+                // Let's assume B100 is 60 USD (discounted from 70).
+                amount = ConvertUSDToSOL(PriceBundle100USD, solPrice)
                 label = "ItsWork 100 Credits"</span>
         default:<span class="cov0" title="0">
-                amount = s.ScanPrice
+                amount = ConvertUSDToSOL(PriceSingleUSD, solPrice)
                 label = "ItsWork Credits"</span>
         }
 
-        <span class="cov0" title="0">memo := url.QueryEscape(fmt.Sprintf("BUNDLE:%s:%s", bundleType, userID))
+        <span class="cov8" title="1">memo := url.QueryEscape(fmt.Sprintf("BUNDLE:%s:%s:%s", bundleType, userID, reference))
         solanaURL := fmt.Sprintf("solana:%s?amount=%s&amp;reference=%s&amp;label=%s&amp;memo=%s",
                 address, amount, reference, url.QueryEscape(label), memo)
 
-        return solanaURL, reference</span>
+        return solanaURL, reference, amount</span>
 }
 
 // GenerateSubscriptionPaymentURL creates a URL for monthly subscription
-func (s *PayService) GenerateSubscriptionPaymentURL(userID, planType string) (string, string) <span class="cov0" title="0">{
+func (s *PayService) GenerateSubscriptionPaymentURL(ctx context.Context, userID, planType string) (string, string, string) <span class="cov8" title="1">{
         reference := uuid.New().String()
         address := s.ProjectWallet
+        solPrice := s.GetSolPriceUSD(ctx)
 
         var amount string
         var label string
         switch planType </span>{
-        case "SUB_MONTHLY_PRO":<span class="cov0" title="0">
-                amount = "25.0" // Example monthly price
+        case "SUB_WEEKLY_PRO":<span class="cov0" title="0">
+                amount = ConvertUSDToSOL(PriceWeeklyUSD, solPrice)
+                label = "ItsWork Weekly Pro"</span>
+        case "SUB_MONTHLY_PRO":<span class="cov8" title="1">
+                amount = ConvertUSDToSOL(PriceMonthlyUSD, solPrice)
                 label = "ItsWork Monthly Pro"</span>
         default:<span class="cov0" title="0">
-                amount = "25.0"
+                amount = ConvertUSDToSOL(PriceMonthlyUSD, solPrice)
                 label = "ItsWork Subscription"</span>
         }
 
-        <span class="cov0" title="0">memo := url.QueryEscape(fmt.Sprintf("SUBSCRIPTION:%s:%s", planType, userID))
+        <span class="cov8" title="1">memo := url.QueryEscape(fmt.Sprintf("SUBSCRIPTION:%s:%s:%s", planType, userID, reference))
         solanaURL := fmt.Sprintf("solana:%s?amount=%s&amp;reference=%s&amp;label=%s&amp;memo=%s",
                 address, amount, reference, url.QueryEscape(label), memo)
 
-        return solanaURL, reference</span>
+        return solanaURL, reference, amount</span>
 }
 
 // VerifyTransaction checks if a transaction with the given reference exists and is finalized
@@ -842,7 +1191,7 @@ func (s *PayService) VerifyTransaction(ctx context.Context, reference string) (b
 }
 </pre>
 		
-		<pre class="file" id="file6" style="display: none">package processor
+		<pre class="file" id="file8" style="display: none">package processor
 
 import (
         "bytes"
@@ -899,6 +1248,26 @@ func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error <sp
                 log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Failed to enrich LP status")
         }</span> else<span class="cov8" title="1"> {
                 payload.IsLpBurned = lpSafe
+        }</span>
+
+        // Enrich 3: FundingSourceCheckPassed
+        <span class="cov8" title="1">fundingPassed, err := e.checkFunding(ctx, rpcURL, payload.CreatorAddress)
+        if err != nil </span><span class="cov8" title="1">{
+                log.Error().Err(err).Str("creator", payload.CreatorAddress).Msg("Failed to enrich funding status")
+                payload.FundingSourceCheckPassed = true // Fallback to true if RPC fails to avoid false negatives
+        }</span> else<span class="cov8" title="1"> {
+                payload.FundingSourceCheckPassed = fundingPassed
+        }</span>
+
+        // Enrich 4: IsRenounced &amp; HasSocials
+        <span class="cov8" title="1">assetData, err := e.fetchAssetData(ctx, rpcURL, payload.MintAddress)
+        if err != nil </span><span class="cov8" title="1">{
+                log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Failed to fetch asset data for renouncement/socials")
+                payload.IsRenounced = false // Pessimistic fallback
+                payload.HasSocials = false
+        }</span> else<span class="cov8" title="1"> {
+                payload.IsRenounced = e.parseRenounced(assetData)
+                payload.HasSocials = e.parseSocials(assetData)
         }</span>
 
         <span class="cov8" title="1">return nil</span>
@@ -959,6 +1328,70 @@ func (e *Enricher) fetchWalletAge(ctx context.Context, rpcURL, address string) (
         <span class="cov8" title="1">return ageHours, nil</span>
 }
 
+func (e *Enricher) fetchAssetData(ctx context.Context, rpcURL, mint string) (map[string]interface{}, error) <span class="cov8" title="1">{
+        reqBody := map[string]interface{}{
+                "jsonrpc": "2.0",
+                "id":      1,
+                "method":  "getAsset",
+                "params": map[string]interface{}{
+                        "id": mint,
+                },
+        }
+        bodyBytes, _ := json.Marshal(reqBody)
+        req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(bodyBytes))
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Content-Type", "application/json")
+        resp, err := e.client.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        var res struct {
+                Result map[string]interface{} `json:"result"`
+        }
+        if err := json.NewDecoder(resp.Body).Decode(&amp;res); err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">return res.Result, nil</span>
+}
+
+func (e *Enricher) parseRenounced(asset map[string]interface{}) bool <span class="cov8" title="1">{
+        authorities, ok := asset["authorities"].([]interface{})
+        if !ok || len(authorities) == 0 </span><span class="cov8" title="1">{
+                return true
+        }</span>
+        // If any authority exists, it's not fully renounced
+        <span class="cov8" title="1">return false</span>
+}
+
+func (e *Enricher) parseSocials(asset map[string]interface{}) bool <span class="cov8" title="1">{
+        content, ok := asset["content"].(map[string]interface{})
+        if !ok </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">metadata, ok := content["metadata"].(map[string]interface{})
+        if !ok </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov8" title="1">uri, _ := metadata["uri"].(string)
+        if uri == "" </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        // Heuristic: Check if URI or links contain common social patterns
+        // Helius getAsset also sometimes includes 'links'
+        <span class="cov8" title="1">links, ok := content["links"].(map[string]interface{})
+        if ok &amp;&amp; len(links) &gt; 0 </span><span class="cov8" title="1">{
+                return true
+        }</span>
+
+        // Basic check on description or other fields if available
+        <span class="cov0" title="0">return false</span>
+}
+
 func (e *Enricher) checkLpBurned(ctx context.Context, rpcURL, mint string) (bool, error) <span class="cov8" title="1">{
         reqBody := map[string]interface{}{
                 "jsonrpc": "2.0",
@@ -1005,9 +1438,124 @@ func (e *Enricher) checkLpBurned(ctx context.Context, rpcURL, mint string) (bool
 
         <span class="cov8" title="1">return false, nil</span>
 }
+
+// Known Exchanges for Solana
+var KnownExchanges = map[string]string{
+        "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9": "Binance",
+        "GJRs4FwHtemZ5ZE9x3FNvJ8TMwitKTh21yxdRPqn7npE": "Coinbase",
+        "is6MTRHEgyFLNTfYcuV4QBWLjrZBfmhVNYR6ccgr8KV":  "OKX",
+}
+
+func (e *Enricher) checkFunding(ctx context.Context, rpcURL, address string) (bool, error) <span class="cov8" title="1">{
+        // 1. Get transaction signatures back to the start
+        reqBody := map[string]interface{}{
+                "jsonrpc": "2.0",
+                "id":      1,
+                "method":  "getSignaturesForAddress",
+                "params": []interface{}{
+                        address,
+                        map[string]interface{}{"limit": 10}, // We just need the very oldest one in a batch of 10 usually
+                },
+        }
+
+        bodyBytes, _ := json.Marshal(reqBody)
+        req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(bodyBytes))
+        if err != nil </span><span class="cov0" title="0">{
+                return true, err
+        }</span>
+        <span class="cov8" title="1">req.Header.Set("Content-Type", "application/json")
+
+        resp, err := e.client.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                return true, err
+        }</span>
+        <span class="cov8" title="1">defer resp.Body.Close()
+
+        var sigRes struct {
+                Result []struct {
+                        Signature string `json:"signature"`
+                } `json:"result"`
+        }
+        err = json.NewDecoder(resp.Body).Decode(&amp;sigRes)
+        if err != nil </span><span class="cov8" title="1">{
+                return true, err
+        }</span>
+
+        <span class="cov8" title="1">if len(sigRes.Result) == 0 </span><span class="cov8" title="1">{
+                return true, nil // No transactions = no funding yet
+        }</span>
+
+        // The last one is the oldest in this set
+        <span class="cov8" title="1">oldestSig := sigRes.Result[len(sigRes.Result)-1].Signature
+
+        // 2. Get transaction details to find the sender
+        txReqBody := map[string]interface{}{
+                "jsonrpc": "2.0",
+                "id":      1,
+                "method":  "getTransaction",
+                "params": []interface{}{
+                        oldestSig,
+                        map[string]interface{}{
+                                "encoding":                       "jsonParsed",
+                                "maxSupportedTransactionVersion": 0,
+                        },
+                },
+        }
+
+        txBodyBytes, _ := json.Marshal(txReqBody)
+        txReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(txBodyBytes))
+        txReq.Header.Set("Content-Type", "application/json")
+
+        txResp, err := e.client.Do(txReq)
+        if err != nil </span><span class="cov0" title="0">{
+                return true, err
+        }</span>
+        <span class="cov8" title="1">defer txResp.Body.Close()
+
+        var txRes struct {
+                Result struct {
+                        Transaction struct {
+                                Message struct {
+                                        AccountKeys []struct {
+                                                Pubkey string `json:"pubkey"`
+                                                Signer bool   `json:"signer"`
+                                        } `json:"accountKeys"`
+                                } `json:"message"`
+                        } `json:"transaction"`
+                } `json:"result"`
+        }
+
+        err = json.NewDecoder(txResp.Body).Decode(&amp;txRes)
+        if err != nil </span><span class="cov0" title="0">{
+                return true, err
+        }</span>
+
+        // The first signer is typically the funder for a SOL transfer
+        <span class="cov8" title="1">var firstSigner string
+        for _, acc := range txRes.Result.Transaction.Message.AccountKeys </span><span class="cov8" title="1">{
+                if acc.Signer </span><span class="cov8" title="1">{
+                        firstSigner = acc.Pubkey
+                        break</span>
+                }
+        }
+
+        <span class="cov8" title="1">if firstSigner == "" </span><span class="cov0" title="0">{
+                return true, nil
+        }</span>
+
+        // Check if the signer is a known exchange
+        <span class="cov8" title="1">if _, ok := KnownExchanges[firstSigner]; ok </span><span class="cov8" title="1">{
+                log.Info().Str("exchange", KnownExchanges[firstSigner]).Str("creator", address).Msg("Creator funded by known exchange")
+                return true, nil
+        }</span>
+
+        // Common rugger pattern: funded by a fresh personal wallet
+        <span class="cov0" title="0">log.Warn().Str("funder", firstSigner).Str("creator", address).Msg("Creator funded by non-exchange wallet (potential serial rugger)")
+        return false, nil</span>
+}
 </pre>
 		
-		<pre class="file" id="file7" style="display: none">package processor
+		<pre class="file" id="file9" style="display: none">package processor
 
 import (
         "context"
@@ -1051,6 +1599,7 @@ func NewBrainClientWithTarget(target string, opts ...grpc.DialOption) (*BrainCli
 func (bc *BrainClient) AnalyzeToken(
         ctx context.Context, mint, creator string, walletAge int32,
         isLpBurned bool, concentration float32, fundingPassed bool,
+        isRenounced bool, hasSocials bool,
 ) (*proto.VerdictResponse, error) <span class="cov8" title="1">{
         if bc.client == nil </span><span class="cov8" title="1">{
                 return nil, errors.New("gRPC client not initialized")
@@ -1062,6 +1611,8 @@ func (bc *BrainClient) AnalyzeToken(
                 IsLpBurned:                       isLpBurned,
                 Top_10HolderConcentrationPercent: concentration,
                 FundingSourceCheckPassed:         fundingPassed,
+                IsRenounced:                      isRenounced,
+                HasSocials:                       hasSocials,
         }
 
         // High Performance: Calling async Brain via standard gRPC call
@@ -1082,7 +1633,198 @@ func (bc *BrainClient) Close() <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file8" style="display: none">package processor
+		<pre class="file" id="file10" style="display: none">package processor
+
+import (
+        "context"
+        "encoding/json"
+        "sync"
+        "time"
+
+        "github.com/gorilla/websocket"
+        "github.com/redis/go-redis/v9"
+        "github.com/rs/zerolog/log"
+)
+
+// PortalSubscriber handles high-velocity WebSocket streaming from Pump Portal.
+type PortalSubscriber struct {
+        url         string
+        redisClient *redis.Client
+        brainClient Brainger
+        conn        *websocket.Conn
+        
+        // Token state tracking
+        tokenCreators sync.Map // mint -&gt; creatorAddr
+        tokenStats    sync.Map // mint -&gt; *TokenState
+}
+
+type TokenState struct {
+        Mint           string
+        Creator        string
+        StartTime      time.Time
+        TradeCount     int
+        LastProgress   float32
+        DevSniped      bool
+        TradesPerMin   float32
+        FunderAddr     string
+        IsHighMomentum bool
+}
+
+type PortalMessage struct {
+        Method    string `json:"method,omitempty"`
+        Signature string `json:"signature"`
+        Mint      string `json:"mint"`
+        Trader    string `json:"trader"`
+        TxType    string `json:"txType"` // "create", "buy", "sell"
+        
+        // Bonding Curve Progress
+        VSolInBondingCurve   float32 `json:"vSolInBondingCurve,string"`
+        VTokensInBondingCurve float32 `json:"vTokensInBondingCurve,string"`
+        
+        // Metadata (for 'create' messages)
+        Symbol string `json:"symbol"`
+        URI    string `json:"uri"`
+}
+
+func NewPortalSubscriber(redis *redis.Client, brain Brainger) *PortalSubscriber <span class="cov8" title="1">{
+        return &amp;PortalSubscriber{
+                url:         "wss://pumpportal.fun/api/data",
+                redisClient: redis,
+                brainClient: brain,
+        }
+}</span>
+
+func (s *PortalSubscriber) Start(ctx context.Context) error <span class="cov0" title="0">{
+        for </span><span class="cov0" title="0">{
+                err := s.connectAndListen(ctx)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Error().Err(err).Msg("PortalSubscriber connection lost, reconnecting in 5s...")
+                        select </span>{
+                        case &lt;-ctx.Done():<span class="cov0" title="0">
+                                return ctx.Err()</span>
+                        case &lt;-time.After(5 * time.Second):<span class="cov0" title="0">
+                                continue</span>
+                        }
+                }
+        }
+}
+
+func (s *PortalSubscriber) connectAndListen(ctx context.Context) error <span class="cov0" title="0">{
+        log.Info().Str("url", s.url).Msg("Connecting to Pump Portal WebSocket...")
+        
+        conn, _, err := websocket.DefaultDialer.Dial(s.url, nil)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov0" title="0">s.conn = conn
+        defer conn.Close()
+
+        // 1. Subscribe to New Tokens
+        if err := conn.WriteJSON(map[string]string{"method": "subscribeNewToken"}); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        
+        // 2. Subscribe to ALL Trades for velocity tracking (High Volume)
+        <span class="cov0" title="0">if err := conn.WriteJSON(map[string]string{"method": "subscribeAllTokenTrades"}); err != nil </span><span class="cov0" title="0">{
+                // Fallback to subscribeTokenTrade if all is not available, but usually it is
+                log.Warn().Msg("Failed to subscribeAllTokenTrades, attempting fallback...")
+        }</span>
+
+        <span class="cov0" title="0">for </span><span class="cov0" title="0">{
+                _, message, err := conn.ReadMessage()
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                <span class="cov0" title="0">var pm PortalMessage
+                if err := json.Unmarshal(message, &amp;pm); err != nil </span><span class="cov0" title="0">{
+                        log.Error().Err(err).Msg("Failed to unmarshal portal message")
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">go s.HandleMessage(pm)</span>
+        }
+}
+
+func (s *PortalSubscriber) HandleMessage(pm PortalMessage) <span class="cov8" title="1">{
+        if pm.TxType == "create" </span><span class="cov8" title="1">{
+                s.handleNewToken(pm)
+                return
+        }</span>
+
+        // For buys/sells
+        <span class="cov8" title="1">s.handleTrade(pm)</span>
+}
+
+func (s *PortalSubscriber) handleNewToken(pm PortalMessage) <span class="cov8" title="1">{
+        log.Info().Str("mint", pm.Mint).Str("creator", pm.Trader).Msg("Detik ke-0: New Token Detected via Pump Portal")
+        
+        s.tokenCreators.Store(pm.Mint, pm.Trader)
+        
+        state := &amp;TokenState{
+                Mint:      pm.Mint,
+                Creator:   pm.Trader,
+                StartTime: time.Now(),
+        }
+        s.tokenStats.Store(pm.Mint, state)
+        
+        // Push to Redis immediately
+        s.cacheState(pm.Mint, state)
+}</span>
+
+func (s *PortalSubscriber) handleTrade(pm PortalMessage) <span class="cov8" title="1">{
+        val, ok := s.tokenStats.Load(pm.Mint)
+        if !ok </span><span class="cov0" title="0">{
+                return // Not tracking or too old
+        }</span>
+        <span class="cov8" title="1">state := val.(*TokenState)
+        
+        state.TradeCount++
+        
+        // Calculate Bonding Progress (Target 85 SOL usually)
+        progress := (pm.VSolInBondingCurve / 85.0) * 100.0
+        state.LastProgress = progress
+
+        // Velocity Check: 50% in &lt; 2 mins
+        duration := time.Since(state.StartTime)
+        if progress &gt;= 50.0 &amp;&amp; duration &lt; 2*time.Minute </span><span class="cov8" title="1">{
+                state.IsHighMomentum = true
+        }</span>
+
+        // Dev Sniping Check: first 10 trades
+        <span class="cov8" title="1">if state.TradeCount &lt;= 10 &amp;&amp; pm.Trader == state.Creator </span><span class="cov8" title="1">{
+                state.DevSniped = true
+                log.Warn().Str("mint", pm.Mint).Msg("DANGER: Dev Sniping Detected!")
+        }</span>
+
+        // Calculate velocity (trades/min)
+        <span class="cov8" title="1">if duration.Seconds() &gt; 0 </span><span class="cov8" title="1">{
+                state.TradesPerMin = float32(float64(state.TradeCount) / duration.Minutes())
+        }</span>
+
+        // Cache updated state in Redis with TTL 60s
+        <span class="cov8" title="1">s.cacheState(pm.Mint, state)</span>
+}
+
+func (s *PortalSubscriber) cacheState(mint string, state *TokenState) <span class="cov8" title="1">{
+        data, _ := json.Marshal(state)
+        err := s.redisClient.Set(context.Background(), "sniper:v1:"+mint, data, 60*time.Second).Err()
+        if err != nil </span><span class="cov0" title="0">{
+                log.Error().Err(err).Msg("Failed to cache sniper state to Redis")
+        }</span>
+}
+
+// GetSniperVerdict is an internal helper for the API handler
+func (s *PortalSubscriber) GetSniperVerdict(mint string) (*TokenState, bool) <span class="cov8" title="1">{
+        val, ok := s.tokenStats.Load(mint)
+        if !ok </span><span class="cov8" title="1">{
+                return nil, false
+        }</span>
+        <span class="cov8" title="1">return val.(*TokenState), true</span>
+}
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">package processor
 
 import (
         "context"
@@ -1105,6 +1847,7 @@ type Brainger interface {
         AnalyzeToken(
                 ctx context.Context, mint, creator string, walletAge int32,
                 isLpBurned bool, concentration float32, fundingPassed bool,
+                isRenounced bool, hasSocials bool,
         ) (*proto.VerdictResponse, error)
 }
 
@@ -1121,6 +1864,8 @@ type HeliusPayload struct {
         IsLpBurned                      bool    `json:"is_lp_burned"`
         Top10HolderConcentrationPercent float32 `json:"top_10_holder_concentration_percent"`
         FundingSourceCheckPassed        bool    `json:"funding_source_check_passed"`
+        IsRenounced                     bool    `json:"is_renounced"`
+        HasSocials                      bool    `json:"has_socials"`
 }
 
 // PubSubSubscriber defines the interface for pulling messages
@@ -1226,6 +1971,8 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) <sp
                 payload.IsLpBurned,
                 payload.Top10HolderConcentrationPercent,
                 payload.FundingSourceCheckPassed,
+                payload.IsRenounced,
+                payload.HasSocials,
         )
         if err != nil </span><span class="cov8" title="1">{
                 log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Intelligence Analysis failed")
@@ -1263,7 +2010,7 @@ func (s *Subscriber) Shutdown() <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file9" style="display: none">package repository
+		<pre class="file" id="file12" style="display: none">package repository
 
 import (
         "context"
@@ -1271,6 +2018,7 @@ import (
         "fmt"
         "time"
 
+        "github.com/getsentry/sentry-go"
         "github.com/redis/go-redis/v9"
         "github.com/rs/zerolog/log"
 )
@@ -1302,7 +2050,7 @@ func (r *PaymentRepository) SavePayment(ctx context.Context, p *Payment) error <
                 RETURNING id;
         `
         err := r.db.QueryRowContext(ctx, query, p.UserID, p.MintAddress, p.Reference, "pending", p.AmountSol).Scan(&amp;p.ID)
-        if err != nil </span><span class="cov8" title="1">{
+        if err != nil </span><span class="cov0" title="0">{
                 log.Error().Err(err).Str("user", p.UserID).Str("mint", p.MintAddress).Msg("Failed to save payment record")
                 return err
         }</span>
@@ -1310,57 +2058,83 @@ func (r *PaymentRepository) SavePayment(ctx context.Context, p *Payment) error <
 }
 
 // UpdatePaymentStatus transitions payment to Success/Failed and updates Redis cache
+// It also triggers fulfillment for BUNDLE or SUBSCRIPTION purchases.
 func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, status string) error <span class="cov8" title="1">{
         var userID, mint string
+        var amount float64
         query := `
                 UPDATE payments
                 SET status = $1, updated_at = now()
                 WHERE reference_key = $2
-                RETURNING user_id, mint_address;
+                RETURNING user_id, mint_address, amount_sol;
         `
-        err := r.db.QueryRowContext(ctx, query, status, reference).Scan(&amp;userID, &amp;mint)
+        err := r.db.QueryRowContext(ctx, query, status, reference).Scan(&amp;userID, &amp;mint, &amp;amount)
         if err != nil </span><span class="cov0" title="0">{
                 return err
         }</span>
 
-        // Stateless: Cache the successful payment in Redis for 1 hour to bypass DB on analysis requests
-        <span class="cov8" title="1">if status == "success" &amp;&amp; r.redis != nil </span><span class="cov8" title="1">{
-                cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
-                r.redis.Set(ctx, cacheKey, "true", 1*time.Hour)
-        }</span>
+        <span class="cov8" title="1">if status == "success" </span><span class="cov8" title="1">{
+                // 1. Fulfillment Logic
+                if mint == "BUNDLE_50" </span><span class="cov8" title="1">{
+                        if err := r.AddUserCredits(ctx, userID, 50); err != nil </span><span class="cov0" title="0">{
+                                log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: AddUserCredits 50")
+                                sentry.CaptureException(err)
+                        }</span>
+                } else<span class="cov8" title="1"> if mint == "BUNDLE_100" </span><span class="cov0" title="0">{
+                        if err := r.AddUserCredits(ctx, userID, 100); err != nil </span><span class="cov0" title="0">{
+                                log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: AddUserCredits 100")
+                                sentry.CaptureException(err)
+                        }</span>
+                } else<span class="cov8" title="1"> if mint == "SUB_MONTHLY_PRO" </span><span class="cov8" title="1">{
+                        if err := r.ActivateSubscription(ctx, userID, "active", 30); err != nil </span><span class="cov8" title="1">{
+                                log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Monthly")
+                                sentry.CaptureException(err)
+                        }</span>
+                } else<span class="cov8" title="1"> if mint == "SUB_WEEKLY_PRO" </span><span class="cov0" title="0">{
+                        if err := r.ActivateSubscription(ctx, userID, "active", 7); err != nil </span><span class="cov0" title="0">{
+                                log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Weekly")
+                                sentry.CaptureException(err)
+                        }</span>
+                }
+
+                // 2. Cache the successful access in Redis for 1 hour
+                <span class="cov8" title="1">if r.redis != nil </span><span class="cov8" title="1">{
+                        cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
+                        r.redis.Set(ctx, cacheKey, "true", 1*time.Hour)
+                }</span>
+        }
 
         <span class="cov8" title="1">return nil</span>
 }
 
 // IsPaid checks if a user has access to full analysis for a specific mint using hybrid logic
 func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) bool <span class="cov8" title="1">{
+        // Lazy-init user credits row if not exists
+        _ = r.InitUserCredits(ctx, userID)
+
         cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
 
         // 1. Redis Check (Stateless Optimization - represents any previously verified access)
         if r.redis != nil </span><span class="cov8" title="1">{
                 val, err := r.redis.Get(ctx, cacheKey).Result()
                 if err == nil &amp;&amp; val == "true" </span><span class="cov8" title="1">{
+                        log.Info().Str("user", userID).Str("mint", mint).Msg("Access granted via Cache")
                         return true
                 }</span>
         }
 
         // STEP 1: Check active subscription
-        <span class="cov8" title="1">if r.HasActiveSubscription(ctx, userID) </span><span class="cov8" title="1">{
+        <span class="cov8" title="1">if r.IsProSubscriber(ctx, userID) </span><span class="cov8" title="1">{
                 r.cacheAccess(ctx, userID, mint)
+                log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "SUBSCRIPTION").Msg("Access granted")
                 return true
         }</span>
-
-        // STEP 3: Check if already paid eceran (Done before credit deduction to save user credits)
-        // Although instructions say Step 2 is credit, usually we check if they already bought it first.
-        // But I will stick to instructions if they are strict.
-        // Re-reading: "STEP 3: Cek apakah koin ini sudah pernah dibayar eceran... Jika ya, Unlock."
-        // I'll swap STEP 2 and 3 if it makes more sense, but the prompt is explicit about the order.
-        // I will follow the prompt's order: Sub -&gt; Credit -&gt; Eceran.
 
         // STEP 2: Check and deduct credit
         <span class="cov8" title="1">deducted, err := r.DeductCredit(ctx, userID)
         if err == nil &amp;&amp; deducted </span><span class="cov8" title="1">{
                 r.cacheAccess(ctx, userID, mint)
+                log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "CREDIT").Msg("Access granted")
                 return true
         }</span>
 
@@ -1378,25 +2152,50 @@ func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) boo
         // Backfill cache if paid
         if isPaid </span><span class="cov8" title="1">{
                 r.cacheAccess(ctx, userID, mint)
+                log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "SINGLE_PAY").Msg("Access granted")
         }</span>
 
         <span class="cov8" title="1">return isPaid</span>
 }
 
-// HasActiveSubscription checks if the user has a 'active' subscription that hasn't expired
-func (r *PaymentRepository) HasActiveSubscription(ctx context.Context, userID string) bool <span class="cov8" title="1">{
-        var count int
+// IsProSubscriber checks if the user has a 'active' subscription that hasn't expired.
+// Uses Redis for quick lookup to reduce DB load.
+func (r *PaymentRepository) IsProSubscriber(ctx context.Context, userID string) bool <span class="cov8" title="1">{
+        subCacheKey := fmt.Sprintf("sub_active:%s", userID)
+
+        // 1. Redis Check
+        if r.redis != nil </span><span class="cov8" title="1">{
+                val, err := r.redis.Get(ctx, subCacheKey).Result()
+                if err == nil </span><span class="cov8" title="1">{
+                        return val == "true"
+                }</span>
+        }
+
+        // 2. Postgres Check
+        <span class="cov8" title="1">var count int
         query := `
-                SELECT COUNT(*)
-                FROM user_subscriptions
+                SELECT COUNT(*) 
+                FROM user_subscriptions 
                 WHERE user_id = $1 AND status = 'active' AND expires_at &gt; now()
         `
         err := r.db.QueryRowContext(ctx, query, userID).Scan(&amp;count)
         if err != nil </span><span class="cov0" title="0">{
-                log.Error().Err(err).Str("user", userID).Msg("Failed to check subscription")
+                log.Error().Err(err).Str("user", userID).Msg("Failed to check subscription in DB")
                 return false
         }</span>
-        <span class="cov8" title="1">return count &gt; 0</span>
+
+        <span class="cov8" title="1">isActive := count &gt; 0
+
+        // 3. Backfill Cache (5 minutes TTL for subscriptions)
+        if r.redis != nil </span><span class="cov8" title="1">{
+                statusStr := "false"
+                if isActive </span><span class="cov0" title="0">{
+                        statusStr = "true"
+                }</span>
+                <span class="cov8" title="1">r.redis.Set(ctx, subCacheKey, statusStr, 5*time.Minute)</span>
+        }
+
+        <span class="cov8" title="1">return isActive</span>
 }
 
 // DeductCredit removes 1 credit from the user's balance atomically
@@ -1440,9 +2239,55 @@ func (r *PaymentRepository) cacheAccess(ctx context.Context, userID, mint string
                 r.redis.Set(ctx, cacheKey, "true", 1*time.Hour)
         }</span>
 }
+
+// InitUserCredits ensures a user has a credit row in the database
+func (r *PaymentRepository) InitUserCredits(ctx context.Context, userID string) error <span class="cov8" title="1">{
+        query := `INSERT INTO user_credits (user_id, balance) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING`
+        _, err := r.db.ExecContext(ctx, query, userID)
+        return err
+}</span>
+
+// AddUserCredits adds credits to a user balance atomically
+func (r *PaymentRepository) AddUserCredits(ctx context.Context, userID string, amount int) error <span class="cov8" title="1">{
+        query := `
+                INSERT INTO user_credits (user_id, balance) 
+                VALUES ($1, $2) 
+                ON CONFLICT (user_id) DO UPDATE 
+                SET balance = user_credits.balance + $2, updated_at = now()
+        `
+        _, err := r.db.ExecContext(ctx, query, userID, amount)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Error().Err(err).Str("user", userID).Int("amount", amount).Msg("Failed to add user credits")
+        }</span>
+        <span class="cov8" title="1">return err</span>
+}
+
+// ActivateSubscription activates or extends a user subscription
+func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, status string, durationDays int) error <span class="cov8" title="1">{
+        if durationDays &lt;= 0 </span><span class="cov0" title="0">{
+                log.Error().Str("user", userID).Int("duration", durationDays).Msg("Invalid subscription duration")
+                sentry.CaptureMessage(fmt.Sprintf("Invalid subscription duration for user %s: %d", userID, durationDays))
+                return fmt.Errorf("invalid subscription duration: %d", durationDays)
+        }</span>
+
+        <span class="cov8" title="1">query := `
+                INSERT INTO user_subscriptions (user_id, status, expires_at)
+                VALUES ($1, $2, now() + interval '1 day' * $3)
+                ON CONFLICT (user_id) DO UPDATE
+                SET status = $2, expires_at = CASE 
+                        WHEN user_subscriptions.expires_at &gt; now() THEN user_subscriptions.expires_at + interval '1 day' * $3
+                        ELSE now() + interval '1 day' * $3
+                END, updated_at = now()
+        `
+        _, err := r.db.ExecContext(ctx, query, userID, status, durationDays)
+        if err != nil </span><span class="cov8" title="1">{
+                log.Error().Err(err).Str("user", userID).Msg("Failed to activate subscription")
+        }</span>
+        <span class="cov8" title="1">return err</span>
+}
 </pre>
 		
-		<pre class="file" id="file10" style="display: none">package repository
+		<pre class="file" id="file13" style="display: none">package repository
 
 import (
         "context"
@@ -1580,7 +2425,7 @@ func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string, isPaid b
 }
 </pre>
 		
-		<pre class="file" id="file11" style="display: none">package cache
+		<pre class="file" id="file14" style="display: none">package cache
 
 import (
         "context"
@@ -1616,7 +2461,7 @@ func InitRedis() (*redis.Client, error) <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file12" style="display: none">package database
+		<pre class="file" id="file15" style="display: none">package database
 
 import (
         "database/sql"
