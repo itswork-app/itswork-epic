@@ -17,7 +17,7 @@ type PortalSubscriber struct {
 	redisClient *redis.Client
 	brainClient Brainger
 	conn        *websocket.Conn
-	
+
 	// Token state tracking
 	tokenCreators sync.Map // mint -> creatorAddr
 	tokenStats    sync.Map // mint -> *TokenState
@@ -41,11 +41,11 @@ type PortalMessage struct {
 	Mint      string `json:"mint"`
 	Trader    string `json:"trader"`
 	TxType    string `json:"txType"` // "create", "buy", "sell"
-	
+
 	// Bonding Curve Progress
-	VSolInBondingCurve   float32 `json:"vSolInBondingCurve,string"`
+	VSolInBondingCurve    float32 `json:"vSolInBondingCurve,string"`
 	VTokensInBondingCurve float32 `json:"vTokensInBondingCurve,string"`
-	
+
 	// Metadata (for 'create' messages)
 	Symbol string `json:"symbol"`
 	URI    string `json:"uri"`
@@ -76,7 +76,7 @@ func (s *PortalSubscriber) Start(ctx context.Context) error {
 
 func (s *PortalSubscriber) connectAndListen(ctx context.Context) error {
 	log.Info().Str("url", s.url).Msg("Connecting to Pump Portal WebSocket...")
-	
+
 	conn, _, err := websocket.DefaultDialer.Dial(s.url, nil)
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func (s *PortalSubscriber) connectAndListen(ctx context.Context) error {
 	if err := conn.WriteJSON(map[string]string{"method": "subscribeNewToken"}); err != nil {
 		return err
 	}
-	
+
 	// 2. Subscribe to ALL Trades for velocity tracking (High Volume)
 	if err := conn.WriteJSON(map[string]string{"method": "subscribeAllTokenTrades"}); err != nil {
 		// Fallback to subscribeTokenTrade if all is not available, but usually it is
@@ -123,16 +123,16 @@ func (s *PortalSubscriber) HandleMessage(pm PortalMessage) {
 
 func (s *PortalSubscriber) handleNewToken(pm PortalMessage) {
 	log.Info().Str("mint", pm.Mint).Str("creator", pm.Trader).Msg("Detik ke-0: New Token Detected via Pump Portal")
-	
+
 	s.tokenCreators.Store(pm.Mint, pm.Trader)
-	
+
 	state := &TokenState{
 		Mint:      pm.Mint,
 		Creator:   pm.Trader,
 		StartTime: time.Now(),
 	}
 	s.tokenStats.Store(pm.Mint, state)
-	
+
 	// Push to Redis immediately
 	s.cacheState(pm.Mint, state)
 }
@@ -143,9 +143,9 @@ func (s *PortalSubscriber) handleTrade(pm PortalMessage) {
 		return // Not tracking or too old
 	}
 	state := val.(*TokenState)
-	
+
 	state.TradeCount++
-	
+
 	// Calculate Bonding Progress (Target 85 SOL usually)
 	progress := (pm.VSolInBondingCurve / 85.0) * 100.0
 	state.LastProgress = progress

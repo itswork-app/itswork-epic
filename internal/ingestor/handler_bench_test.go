@@ -16,9 +16,9 @@ func BenchmarkSniperVerdictHandler(b *testing.B) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	
+
 	portalSub := processor.NewPortalSubscriber(rdb, nil)
-	
+
 	// Pre-populate with a token
 	pm := processor.PortalMessage{
 		TxType:             "create",
@@ -33,9 +33,9 @@ func BenchmarkSniperVerdictHandler(b *testing.B) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Params = []gin.Param{{Key: "mint", Value: "benchmint"}}
-		
+
 		SniperVerdictHandler(c, portalSub)
-		
+
 		if w.Code != http.StatusOK {
 			b.Errorf("expected 200, got %d", w.Code)
 		}

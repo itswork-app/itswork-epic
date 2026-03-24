@@ -215,13 +215,13 @@ func TestTokenAnalysisHandler_MissingMint(t *testing.T) {
 
 func TestSniperVerdictHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	t.Run("NotFound", func(t *testing.T) {
 		portalSub := processor.NewPortalSubscriber(nil, nil)
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Params = []gin.Param{{Key: "mint", Value: "missing"}}
-		
+
 		SniperVerdictHandler(c, portalSub)
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
@@ -230,32 +230,33 @@ func TestSniperVerdictHandler(t *testing.T) {
 		mr, _ := miniredis.Run()
 		defer mr.Close()
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		
+
 		portalSub := processor.NewPortalSubscriber(rdb, nil)
-		
+
 		// Manually inject state for testing (simulating a create event)
 		pm := processor.PortalMessage{
 			TxType: "create",
 			Mint:   "snipe123",
 			Trader: "creator123",
 		}
-		
-		// We can't call private handleMessage, but we can call Start in a limited way or 
+
+		// We can't call private handleMessage, but we can call Start in a limited way or
 		// if we make handleMessage public. Wait, I made it public in my thought but wrote it as private?
 		// Let me check portal_subscriber.go.
-		
+
 		// It's public: func (s *PortalSubscriber) HandleMessage(pm PortalMessage)
 		portalSub.HandleMessage(pm)
-		
+
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Params = []gin.Param{{Key: "mint", Value: "snipe123"}}
-		
+
 		SniperVerdictHandler(c, portalSub)
 		assert.Equal(t, http.StatusOK, w.Code)
-		
+
 		var resp map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		assert.NoError(t, err)
 		assert.Equal(t, "snipe123", resp["mint"])
 	})
 }

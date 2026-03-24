@@ -21,7 +21,7 @@ func TestPortalSubscriber_HandleMessage(t *testing.T) {
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	brain := &mockBrainger{}
-	
+
 	s := NewPortalSubscriber(rdb, brain)
 
 	t.Run("HandleNewToken", func(t *testing.T) {
@@ -46,7 +46,7 @@ func TestPortalSubscriber_HandleMessage(t *testing.T) {
 	t.Run("HandleTrade_VelocityAndSniping", func(t *testing.T) {
 		mint := "mint456"
 		creator := "creator456"
-		
+
 		// Setup initial state
 		state := &TokenState{
 			Mint:      mint,
@@ -64,7 +64,7 @@ func TestPortalSubscriber_HandleMessage(t *testing.T) {
 			VSolInBondingCurve: 10.0,
 		}
 		s.HandleMessage(pm)
-		
+
 		val, _ := s.GetSniperVerdict(mint)
 		assert.Equal(t, 1, val.TradeCount)
 		assert.InDelta(t, 11.76, val.LastProgress, 0.1) // 10/85 * 100
@@ -105,10 +105,10 @@ func TestPortalSubscriber_ConnectAndListen(t *testing.T) {
 			return
 		}
 		defer c.Close()
-		
+
 		// Receive subscription
 		_, _, _ = c.ReadMessage()
-		
+
 		// Send a dummy message
 		msg := PortalMessage{
 			TxType: "create",
@@ -117,28 +117,28 @@ func TestPortalSubscriber_ConnectAndListen(t *testing.T) {
 		}
 		data, _ := json.Marshal(msg)
 		_ = c.WriteMessage(websocket.TextMessage, data)
-		
+
 		// Close after a bit
 		time.Sleep(100 * time.Millisecond)
 	}))
 	defer server.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-	
+
 	mr, _ := miniredis.Run()
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	
+
 	s := NewPortalSubscriber(rdb, nil)
 	s.url = wsURL
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	
+
 	// We run connectAndListen in a way that it will eventually return due to server close
 	err := s.connectAndListen(ctx)
 	assert.Error(t, err) // Expected error on close
-	
+
 	val, ok := s.GetSniperVerdict("mock123")
 	assert.True(t, ok)
 	assert.Equal(t, "mocktrader", val.Creator)
@@ -147,12 +147,10 @@ func TestPortalSubscriber_ConnectAndListen(t *testing.T) {
 func TestPortalSubscriber_CacheState_Fail(t *testing.T) {
 	mr, _ := miniredis.Run()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	
+
 	s := NewPortalSubscriber(rdb, nil)
 	mr.Close() // Force failure
-	
+
 	s.cacheState("mint_fail", &TokenState{})
 	// Should log error but not panic
 }
-
-
