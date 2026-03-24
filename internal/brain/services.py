@@ -4,7 +4,6 @@ import sentry_sdk
 
 # Ensure __init__.py allows access or just import directly
 from api.proto import CONTRACTS_pb2, CONTRACTS_pb2_grpc
-import sentry_sdk
 
 sentry_sdk.init(
     dsn=os.environ.get("SENTRY_DSN_PYTHON"),
