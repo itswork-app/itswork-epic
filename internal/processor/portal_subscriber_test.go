@@ -35,7 +35,7 @@ func TestPortalSubscriber_HandleMessage(t *testing.T) {
 		},
 	}
 
-	s := NewPortalSubscriber(rdb, brain)
+	s := NewPortalSubscriber(rdb, brain, nil)
 
 	t.Run("HandleNewToken", func(t *testing.T) {
 		pm := PortalMessage{
@@ -105,7 +105,7 @@ func TestPortalSubscriber_HandleMessage(t *testing.T) {
 }
 
 func TestPortalSubscriber_GetSniperVerdict_NotFound(t *testing.T) {
-	s := NewPortalSubscriber(nil, nil)
+	s := NewPortalSubscriber(nil, nil, nil)
 	_, ok := s.GetSniperVerdict("missing")
 	assert.False(t, ok)
 }
@@ -142,7 +142,7 @@ func TestPortalSubscriber_ConnectAndListen(t *testing.T) {
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	s := NewPortalSubscriber(rdb, nil)
+	s := NewPortalSubscriber(rdb, nil, nil)
 	s.url = wsURL
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -161,7 +161,7 @@ func TestPortalSubscriber_CacheState_Fail(t *testing.T) {
 	mr, _ := miniredis.Run()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	s := NewPortalSubscriber(rdb, nil)
+	s := NewPortalSubscriber(rdb, nil, nil)
 	mr.Close() // Force failure
 
 	s.cacheState("mint_fail", &TokenState{})

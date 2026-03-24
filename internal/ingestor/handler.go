@@ -90,8 +90,10 @@ func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber,
 	granted, accessKind, err := payRepo.CheckAccess(c.Request.Context(), userID, mint, true)
 	if err != nil || !granted {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":  "Access Denied",
-			"reason": "Sniper API access requires an active subscription and available quota.",
+			"error":            "Access Denied",
+			"reason":           "Sniper API access requires an active subscription and available quota.",
+			"suggested_action": "upgrade",
+			"upgrade_url":      "https://itswork.app/developer/billing",
 		})
 		return
 	}

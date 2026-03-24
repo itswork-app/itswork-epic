@@ -441,7 +441,7 @@ func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, pl
 	} else if err == nil {
 		// EXISTING SUBSCRIPTION
 		if newTier > oldTier && oldExpiry.After(now) {
-			// UPGRADE: Carry over unused quota (PR-NEXUS-REPUTATION Ascension)
+			// UPGRADE: Atomic Carry-over (10/10 Industrial Perfection)
 			leftover := oldLimit - oldUsage
 			if leftover < 0 {
 				leftover = 0
@@ -452,18 +452,19 @@ func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, pl
 				    plan_tier = $2, 
 				    status = 'active', 
 				    expires_at = now() + interval '1 day' * $3, 
-				    quota_limit = $4 + $5, 
+				    quota_limit = $4 + $5, -- New Plan Quota + Leftover
 				    carry_over_quota = $5,
-				    current_usage = 0,
+				    current_usage = 0, -- Start fresh for new plan
 				    updated_at = now()
 				WHERE user_id = $6
 			`
 			_, err = tx.ExecContext(ctx, queryUpgrade, planType, newTier, durationDays, quota, leftover, userID)
 		} else if newTier < oldTier && oldExpiry.After(now) {
-			// QUEUED DOWNGRADE: Store in pending_plan
+			// QUEUED DOWNGRADE: Protect current high-tier status (10/10 UX)
 			queryDowngrade := `
 				UPDATE user_subscriptions 
-				SET pending_plan = $1, updated_at = now()
+				SET pending_plan = $1, 
+				    updated_at = now()
 				WHERE user_id = $2
 			`
 			_, err = tx.ExecContext(ctx, queryDowngrade, planType, userID)
@@ -479,7 +480,7 @@ func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, pl
 						ELSE now() + interval '1 day' * $3
 					END,
 				    quota_limit = $4,
-				    current_usage = 0, -- Reset usage for new period
+				    current_usage = 0, -- Reset for new cycle
 				    updated_at = now()
 				WHERE user_id = $5
 			`
