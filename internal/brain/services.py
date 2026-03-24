@@ -1,5 +1,10 @@
 import logging
 import os
+import sys
+
+# Standardize path resolution for gRPC stubs across project
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+
 import sentry_sdk
 
 # Ensure __init__.py allows access or just import directly
