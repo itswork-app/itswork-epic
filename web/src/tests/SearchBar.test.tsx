@@ -4,11 +4,11 @@ import { vi, describe, it, expect } from 'vitest'
 
 // Mock UI components that might cause issues in JSDOM
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: { children: React.ReactNode }) => <button {...props}>{children}</button>
+  Button: ({ children, ...props }: any) => <button {...props}>{children}</button>
 }))
 
 vi.mock('@/components/ui/input', () => ({
-  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />
+  Input: (props: any) => <input {...props} />
 }))
 
 describe('SearchBar', () => {

@@ -3,7 +3,7 @@ import OnboardingPage from '@/app/onboarding/page'
 import { vi, describe, it, expect } from 'vitest'
 
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: { children: React.ReactNode }) => <button {...props}>{children}</button>
+  Button: ({ children, ...props }: any) => <button {...props}>{children}</button>
 }))
 
 describe('OnboardingPage', () => {
