@@ -9,7 +9,10 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
-  if (!isPublicRoute(request)) {
+  const isTeaserRequest = request.nextUrl.pathname.startsWith("/api/v1/token") && 
+                          request.nextUrl.searchParams.get("teaser") === "true";
+
+  if (!isPublicRoute(request) && !isTeaserRequest) {
     // Protect all other routes
     await auth.protect();
   }
