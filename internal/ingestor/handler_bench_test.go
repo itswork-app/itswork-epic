@@ -39,7 +39,7 @@ func BenchmarkSniperVerdictHandler(b *testing.B) {
 		c.Request, _ = http.NewRequest("GET", "/", nil)
 		c.Params = []gin.Param{{Key: "mint", Value: "benchmint"}}
 		c.Set("userID", "benchuser")
-		mr.Set("free:user:benchuser:api", "0")
+		_ = mr.Set("free:user:benchuser:api", "0")
 
 		SniperVerdictHandler(c, portalSub, payRepo)
 
