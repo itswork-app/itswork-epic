@@ -118,6 +118,10 @@ func SetupRouter(
 			AuthSyncHandler(c, authRepo)
 		})
 
+		api.GET("/user/quota", func(c *gin.Context) {
+			GetQuotaHandler(c, payRepo)
+		})
+
 		// DEVELOPER PORTAL: API-only endpoint (X-API-KEY)
 		api.GET("/sniper/verdict/:mint", func(c *gin.Context) {
 			if authMethod, _ := c.Get("authMethod"); authMethod != "api_key" {
@@ -243,6 +247,10 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 			"score":   resp.Score,
 			"verdict": resp.Verdict,
 			"teaser":  true,
+			"enrichment": gin.H{
+				"creator_reputation": "REDACTED",
+				"insider_risk":       "REDACTED",
+			},
 			"message": "Upgrade to unlock creator reputation and holder insights.",
 		})
 		return
@@ -307,13 +315,37 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 
 	// Gated Response Logic (Full Success)
 	c.JSON(http.StatusOK, gin.H{
-		"mint":               mint,
-		"score":              resp.Score,
-		"verdict":            resp.Verdict,
-		"reason":             resp.Reason,
-		"creator_reputation": resp.CreatorReputation,
-		"insider_risk":       resp.InsiderRisk,
-		"is_paid":            true,
+		"mint":    mint,
+		"score":   resp.Score,
+		"verdict": resp.Verdict,
+		"reason":  resp.Reason,
+		"enrichment": gin.H{
+			"creator_reputation": resp.CreatorReputation,
+			"insider_risk":       resp.InsiderRisk,
+		},
+		"is_paid": true,
+	})
+}
+
+// GetQuotaHandler returns the user's current usage status (PR-MOCK-DESTRUCTION).
+func GetQuotaHandler(c *gin.Context, payRepo *repository.PaymentRepository) {
+	userID := GetUserID(c)
+	if userID == "" || userID == "guest_teaser" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	freeUI := payRepo.GetFreeUsage(ctx, userID, "ui")
+	freeAPI := payRepo.GetFreeUsage(ctx, userID, "api")
+	remaining, _ := payRepo.GetQuotaRemaining(ctx, userID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"free_ui":      freeUI,
+		"free_ui_max":  repository.FreeUIScans,
+		"free_api":     freeAPI,
+		"free_api_max": repository.FreeAPIUses,
+		"subscription": remaining,
 	})
 }
 
