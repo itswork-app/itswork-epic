@@ -28,8 +28,6 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
 
         logging.info(f"Received AnalyzeToken request => mint: {mint_address}, creator: {creator_address}")
 
-        logging.info(f"Received AnalyzeToken request => mint: {mint_address}, creator: {creator_address}")
-
         # Load configurable thresholds from environment variables
         min_wallet_age_hours = int(os.environ.get("MIN_WALLET_AGE_HOURS", 24))
         max_holder_concentration = float(os.environ.get("MAX_HOLDER_CONCENTRATION_PERCENT", 50.0))
@@ -88,7 +86,6 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
             # Very high velocity might be bot wash trading, but user wants to reward momentum
             score += 10
             reasons.append(f"High trade velocity: {trade_velocity:.1f} tpm (+10)")
-
         # Determine Verdict
         if score >= 80:
             verdict = "SAFE"

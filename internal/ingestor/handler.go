@@ -64,7 +64,6 @@ func SetupRouter(
 		api.POST("/api/v1/pay/subscribe", func(c *gin.Context) {
 			CreateSubscriptionPaymentHandler(c, payService, payRepo)
 		})
-
 		// --- SNIPER ENGINE: LOW LATENCY ---
 		api.GET("/sniper/verdict/:mint", func(c *gin.Context) {
 			SniperVerdictHandler(c, portalSub)
