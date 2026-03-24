@@ -61,6 +61,13 @@ func DualAuthMiddleware(authRepo *repository.AuthRepository, payRepo *repository
 		// 2. Fallback to Authorization: Bearer <JWT> (Dashboard)
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
+			// PR-NEXUS-INTELLIGENCE: Allow Public Teaser Access
+			if c.Query("teaser") == "true" {
+				c.Set("userID", "guest_teaser")
+				c.Set("authMethod", "public")
+				c.Next()
+				return
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required (X-API-KEY or Bearer token)"})
 			c.Abort()
 			return

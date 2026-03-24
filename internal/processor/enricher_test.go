@@ -197,13 +197,13 @@ func TestEnricher_CheckCreatorReputation(t *testing.T) {
 
 	t.Run("SafeCreator", func(t *testing.T) {
 		rep, count := e.checkCreatorReputation(context.Background(), ts.URL, "safe123")
-		assert.Equal(t, "Safe", rep)
+		assert.Equal(t, "TRUSTED", rep)
 		assert.Equal(t, 0, count)
 	})
 
 	t.Run("SerialRugger", func(t *testing.T) {
 		rep, count := e.checkCreatorReputation(context.Background(), ts.URL, "rugger123")
-		assert.Equal(t, "SerialRugger", rep)
+		assert.Equal(t, "SERIAL_RUGGER", rep)
 		assert.Equal(t, 6, count)
 	})
 }

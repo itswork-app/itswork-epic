@@ -31,7 +31,7 @@ type Brainger interface {
 
 // VaultRepository defines the interface for data persistence
 type VaultRepository interface {
-	SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error
+	SaveAnalysis(ctx context.Context, mint, creator, verdict, reason, creatorRep, insiderRisk string, score int) error
 	GetRedis() *redis.Client
 }
 
@@ -171,7 +171,7 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 	}
 
 	// Persist Analysis result to Neon DB via Repository Layer
-	err = s.repo.SaveAnalysis(ctx, payload.MintAddress, payload.CreatorAddress, resp.Verdict, resp.Reason, int(resp.Score))
+	err = s.repo.SaveAnalysis(ctx, payload.MintAddress, payload.CreatorAddress, resp.Verdict, resp.Reason, resp.CreatorReputation, resp.InsiderRisk, int(resp.Score))
 	if err != nil {
 		// Log error is handled in Repository, but we Decide Nack or Ack here
 		// Standard: Nack to allow retry if DB is temporarily unstable
