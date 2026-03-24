@@ -106,7 +106,8 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         if has_golden_wallets:
             score += 30
             goldens_str = ", ".join(golden_wallets[:3]) # Show top 3
-            reasons.append(f"ELITE SIGNAL: {len(golden_wallets)} high win-rate buyers detected ({goldens_str}...) (+30)")
+            msg = f"ELITE SIGNAL: {len(golden_wallets)} high win-rate buyers detected ({goldens_str}...) (+30)"
+            reasons.append(msg)
 
         # 10. Creator Reputation (PR-NEXUS-REPUTATION)
         if creator_reputation == "SerialRugger":
