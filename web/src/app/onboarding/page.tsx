@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useUser, useAuth } from "@clerk/nextjs";
 import { LineChart, Code2, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,6 @@ import { Button } from "@/components/ui/button";
 export default function OnboardingPage() {
   const { isLoaded: userLoaded } = useUser();
   const { getToken } = useAuth();
-  const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
 
   const selectRole = async (role: "trader" | "developer") => {

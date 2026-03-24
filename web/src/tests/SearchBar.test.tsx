@@ -19,8 +19,9 @@ describe('SearchBar', () => {
 
   it('shows intelligent blur for guest teaser results', async () => {
     // Mock successful teaser response
-    (global.fetch as any).mockResolvedValueOnce({
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
+      status: 200,
       json: async () => ({
         mint: '7vfCXTUX...',
         score: 85,
@@ -30,7 +31,7 @@ describe('SearchBar', () => {
         creator_reputation: 'TRUSTED',
         insider_risk: 'Low'
       })
-    })
+    } as unknown as Response)
 
     render(<SearchBar />)
     const input = screen.getByPlaceholderText(/Enter Solana mint/i)
