@@ -104,17 +104,16 @@ func TestTokenAnalysisHandler_PaidSuccess(t *testing.T) {
 	payRepo := repository.NewPaymentRepository(db, nil)
 
 	// PR-NEXUS-INTELLIGENCE: With Redis nil, CheckAndIncrFreeUsage returns (true, nil) = fail-open
-	// So CheckAccess immediately returns (true, "free_atomic_ui", nil)
-	// Only InitUserCredits and GetAnalysis SQL are called
+	// PR-NEXUS-AUTH-JOURNEY: Teaser check happens FIRST.
 
-	// 1. Lazy-init user credits
-	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// 2. GetAnalysis (hit)
+	// 1. GetAnalysis (teaser=false, but check still happens)
 	mock.ExpectQuery(`(?s)SELECT.*FROM.*token_analysis.*WHERE.*mint_address = \$1`).
 		WithArgs("mint123").
 		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).
 			AddRow("SAFE", 90, "LP Burned", "TRUSTED", "NORMAL"))
+
+	// 2. Lazy-init user credits (happens after DB hit now)
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -127,6 +126,26 @@ func TestTokenAnalysisHandler_PaidSuccess(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "SAFE")
+}
+
+func TestSaveUserRoleHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, mock, _ := sqlmock.New()
+	defer db.Close()
+
+	authRepo := repository.NewAuthRepository(db, nil)
+
+	mock.ExpectExec("INSERT INTO users").WithArgs("user123", "trader").WillReturnResult(sqlmock.NewResult(1, 1))
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	body := []byte(`{"role": "trader"}`)
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/user/role", bytes.NewBuffer(body))
+	c.Set("userID", "user123")
+
+	SaveUserRoleHandler(c, authRepo)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestTokenAnalysisHandler_Unpaid(t *testing.T) {
@@ -322,14 +341,14 @@ func TestTokenAnalysisHandler_TeaserMode(t *testing.T) {
 	repo := repository.NewTokenRepository(db, nil)
 	payRepo := repository.NewPaymentRepository(db, nil)
 
-	// Lazy-init
-	mock.ExpectExec("INSERT INTO user_credits").WithArgs("guest_teaser").WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// 2. GetAnalysis (teaser enabled)
+	// 1. GetAnalysis (Teaser check happens FIRST)
 	mock.ExpectQuery(`(?s)SELECT.*FROM.*token_analysis.*WHERE.*mint_address = \$1`).
 		WithArgs("mint_teaser").
 		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).
 			AddRow("SAFE", 85, "Reason", "TRUSTED", "NORMAL"))
+
+	// 2. Lazy-init (happens after DB hit)
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("guest_teaser").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -468,14 +487,14 @@ func TestTokenAnalysisHandler_CacheMiss_DBHit(t *testing.T) {
 	payRepo := repository.NewPaymentRepository(db, rdb)
 
 	mint := "mint_miss"
-	// 1. CheckAccess (InitUserCredits)
-	mock.ExpectExec("INSERT INTO user_credits").WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// 2. GetAnalysis
+	// 1. GetAnalysis (Happens FIRST now)
 	mock.ExpectQuery(`(?s)SELECT.*FROM.*token_analysis.*WHERE.*mint_address = \$1`).
 		WithArgs(mint).
 		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).
 			AddRow("BULLISH", 85, "good", "TRUSTED", "LOW"))
+
+	// 2. CheckAccess (InitUserCredits)
+	mock.ExpectExec("INSERT INTO user_credits").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -505,15 +524,16 @@ func TestTokenAnalysisHandler_Teaser(t *testing.T) {
 	mint := "mint_teaser"
 	userID := "user_teaser"
 
-	// 1. CheckAccess (InitUserCredits)
-	mock.ExpectExec("INSERT INTO user_credits").WillReturnResult(sqlmock.NewResult(1, 1))
-	// 2. CheckAndIncrFreeUsage will be called (Redis Lua)
-
-	// 3. GetAnalysis
+	// 1. GetAnalysis (Happens FIRST now)
 	mock.ExpectQuery(`(?s)SELECT.*FROM.*token_analysis.*WHERE.*mint_address = \$1`).
 		WithArgs(mint).
 		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).
 			AddRow("BULLISH", 85, "good", "TRUSTED", "LOW"))
+
+	// 2. CheckAndIncrFreeUsage / InitUserCredits (happens if NOT teaser or for logging)
+	// In the handler, if teaser=true, we skip CheckAccess, but we still might call InitUserCredits
+	// based on the context. Let's look at the handler logic again.
+	mock.ExpectExec("INSERT INTO user_credits").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

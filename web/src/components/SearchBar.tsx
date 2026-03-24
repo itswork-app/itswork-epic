@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 export function SearchBar() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ score: number; verdict: string } | null>(null);
+  const [result, setResult] = useState<{ score: number; verdict: string; teaser?: boolean } | null>(null);
   const [error, setError] = useState("");
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -20,7 +20,7 @@ export function SearchBar() {
     setError("");
 
     try {
-      const res = await fetch(`/api/v1/token/${address.trim()}`);
+      const res = await fetch(`/api/v1/token/${address.trim()}?teaser=true`);
       if (!res.ok) {
         throw new Error("Failed to fetch token intelligence");
       }
@@ -28,6 +28,7 @@ export function SearchBar() {
       setResult({
         score: data.score || 0,
         verdict: data.verdict || "UNKNOWN",
+        teaser: data.teaser || false,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Auditing service currently unavailable.";
@@ -108,6 +109,41 @@ export function SearchBar() {
                 </div>
               </div>
             </div>
+
+            {/* Intelligent Blur Section (PR-NEXUS-AUTH-JOURNEY) */}
+            {result.teaser && (
+              <div className="w-full mt-8 space-y-6">
+                <div className="relative p-6 rounded-2xl bg-white/5 border border-white/10 overflow-hidden group/blur">
+                  <div className="absolute inset-0 bg-linear-to-b from-transparent to-[#030508] z-10" />
+                  <div className="space-y-4 filter blur-sm select-none opacity-40">
+                    <div className="flex items-center justify-between">
+                      <div className="h-4 w-32 bg-slate-700 rounded animate-pulse" />
+                      <div className="h-4 w-12 bg-slate-700 rounded animate-pulse" />
+                    </div>
+                    <div className="h-20 w-full bg-slate-800/50 rounded-xl" />
+                    <div className="flex space-x-2">
+                       <div className="h-8 w-20 bg-slate-700 rounded-lg" />
+                       <div className="h-8 w-24 bg-slate-700 rounded-lg" />
+                    </div>
+                  </div>
+                  
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                    <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 border border-blue-500/30">
+                       <ShieldCheck className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-sans text-slate-300 max-w-[240px]">
+                      Creator history and insider analysis are <strong>restricted</strong>.
+                    </p>
+                    <Button 
+                      onClick={() => window.location.href = "/sign-up"}
+                      className="h-10 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-6 shadow-lg shadow-blue-500/20 transition-all hover:scale-105"
+                    >
+                      Login to Unlock Full Intelligence
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

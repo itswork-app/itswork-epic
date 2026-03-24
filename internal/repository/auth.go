@@ -72,4 +72,33 @@ func (r *AuthRepository) SaveAPIKey(ctx context.Context, userID, apiKeyHash, lab
 	return nil
 }
 
+// SaveUserRole updates or creates a user record with their selected role.
+func (r *AuthRepository) SaveUserRole(ctx context.Context, userID, role string) error {
+	query := `
+		INSERT INTO users (id, role, updated_at)
+		VALUES ($1, $2, now())
+		ON CONFLICT (id) DO UPDATE SET role = $2, updated_at = now();
+	`
+	_, err := r.db.ExecContext(ctx, query, userID, role)
+	if err != nil {
+		log.Error().Err(err).Str("user", userID).Str("role", role).Msg("Failed to save user role")
+		return err
+	}
+	return nil
+}
+
+// GetUserRole retrieves the role for a specific user.
+func (r *AuthRepository) GetUserRole(ctx context.Context, userID string) (string, error) {
+	var role string
+	query := `SELECT role FROM users WHERE id = $1`
+	err := r.db.QueryRowContext(ctx, query, userID).Scan(&role)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "unassigned", nil
+		}
+		return "", err
+	}
+	return role, nil
+}
+
 // Master Blueprint Read & Verified.

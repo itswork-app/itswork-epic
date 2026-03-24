@@ -1,9 +1,12 @@
 package ingestor
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 
+	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 
@@ -63,6 +66,10 @@ func SetupRouter(
 
 		api.POST("/pay/subscribe", func(c *gin.Context) {
 			CreateSubscriptionPaymentHandler(c, payService, payRepo)
+		})
+
+		api.POST("/user/role", func(c *gin.Context) {
+			SaveUserRoleHandler(c, authRepo)
 		})
 
 		// DEVELOPER PORTAL: API-only endpoint (X-API-KEY)
@@ -168,6 +175,33 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 	authMethod, _ := c.Get("authMethod")
 	isAPI := (authMethod == "api_key")
 
+	// Teaser Logic (PR-NEXUS-INTELLIGENCE)
+	isTeaser := (c.Query("teaser") == "true" || authMethod == "public")
+
+	if isTeaser {
+		// Perform the actual work (AI Analysis)
+		resp, err := repo.GetAnalysis(c.Request.Context(), mint, true)
+		if err != nil {
+			log.Warn().Err(err).Str("mint", mint).Msg("Teaser analysis failed")
+			if err.Error() == "analysis not found for mint: "+mint {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Analysis not found"})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Analysis failed internally"})
+			}
+			return
+		}
+
+		// Teaser Mode: Scrub sensitive intelligence
+		c.JSON(http.StatusOK, gin.H{
+			"mint":    mint,
+			"score":   resp.Score,
+			"verdict": resp.Verdict,
+			"teaser":  true,
+			"message": "Upgrade to unlock creator reputation and holder insights.",
+		})
+		return
+	}
+
 	granted, accessKind, err := payRepo.CheckAccess(c.Request.Context(), userID, mint, isAPI)
 	if err != nil {
 		log.Error().Err(err).Str("user", userID).Msg("Access check failed")
@@ -194,7 +228,7 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 
 			if count > 0 {
 				log.Info().Str("user", userID).Str("mint", mint).Msg("Emergency Bridge: Granting access via Single-Pay")
-				// Proceed with analysis branch... (Logic continues below)
+				// Proceed with analysis branch...
 			} else {
 				c.JSON(http.StatusPaymentRequired, gin.H{
 					"error":            "Insufficient Credits",
@@ -206,14 +240,9 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 				return
 			}
 		}
-		if !isAPI {
-			// Ensure we don't return early if count > 0
-		} else {
-			return
-		}
 	}
 
-	// Perform the actual work (AI Analysis)
+	// Perform the actual work (AI Analysis) - Full Access
 	resp, err := repo.GetAnalysis(c.Request.Context(), mint, true)
 	if err != nil {
 		// ANALYSIS FAILED: Atomic Quota Recovery — we do NOT call CommitUsage
@@ -224,21 +253,6 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Analysis failed internally"})
 		}
-		return
-	}
-
-	// Teaser Logic (PR-NEXUS-INTELLIGENCE)
-	isTeaser := (c.Query("teaser") == "true" || authMethod == "public")
-
-	if isTeaser {
-		// Teaser Mode: Scrub sensitive intelligence
-		c.JSON(http.StatusOK, gin.H{
-			"mint":    mint,
-			"score":   resp.Score,
-			"verdict": resp.Verdict,
-			"teaser":  true,
-			"message": "Upgrade to unlock creator reputation and holder insights.",
-		})
 		return
 	}
 
@@ -255,4 +269,48 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 		"insider_risk":       resp.InsiderRisk,
 		"is_paid":            true,
 	})
+}
+
+// SaveUserRoleHandler updates the user role in the local database.
+func SaveUserRoleHandler(c *gin.Context, authRepo *repository.AuthRepository) {
+	var input struct {
+		Role string `json:"role" binding:"required,oneof=trader developer"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role selection. Must be 'trader' or 'developer'."})
+		return
+	}
+
+	userID := GetUserID(c)
+	if userID == "" || userID == "guest_teaser" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	if err := authRepo.SaveUserRole(c.Request.Context(), userID, input.Role); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save user role"})
+		return
+	}
+
+	// Sync to Clerk Public Metadata (PR-NEXUS-AUTH-JOURNEY)
+	go func() {
+		// Use a background context as this is an async sync
+		ctx := context.Background()
+		metadata := map[string]interface{}{
+			"role":                 input.Role,
+			"onboarding_completed": true,
+		}
+		rawMetadata, _ := json.Marshal(metadata)
+		clerkRaw := json.RawMessage(rawMetadata)
+
+		_, err := user.Update(ctx, userID, &user.UpdateParams{
+			PublicMetadata: &clerkRaw,
+		})
+		if err != nil {
+			log.Error().Err(err).Str("user", userID).Msg("Failed to sync role to Clerk Metadata")
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "role": input.Role})
 }
