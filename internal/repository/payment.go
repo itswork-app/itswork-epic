@@ -11,6 +11,27 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	// UI quota tiers (Marketing Portal)
+	QuotaUIBasic = 50
+	QuotaUIPro   = 200
+
+	// API quota tiers (Developer Portal)
+	QuotaAPIPro        = 600
+	QuotaAPIUltra      = 3600
+	QuotaAPIEnterprise = 23100
+
+	// Legacy compatibility (used in fulfillment logic)
+	QuotaProMonthly   = QuotaUIPro
+	QuotaProWeekly    = 50 // Basic/weekly
+	QuotaUltraMonthly = QuotaAPIUltra
+	QuotaEnterprise   = QuotaAPIEnterprise
+
+	// Free tier limits
+	FreeUIScans = 3
+	FreeAPIUses = 10
+)
+
 type Payment struct {
 	ID          string
 	UserID      string
@@ -74,13 +95,18 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 				sentry.CaptureException(err)
 			}
 		} else if mint == "SUB_MONTHLY_PRO" {
-			if err := r.ActivateSubscription(ctx, userID, "active", 30); err != nil {
+			if err := r.ActivateSubscription(ctx, userID, "active", 30, QuotaProMonthly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Monthly")
 				sentry.CaptureException(err)
 			}
 		} else if mint == "SUB_WEEKLY_PRO" {
-			if err := r.ActivateSubscription(ctx, userID, "active", 7); err != nil {
+			if err := r.ActivateSubscription(ctx, userID, "active", 7, QuotaProWeekly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Weekly")
+				sentry.CaptureException(err)
+			}
+		} else if mint == "SUB_ULTRA_PRO" {
+			if err := r.ActivateSubscription(ctx, userID, "active", 30, QuotaUltraMonthly); err != nil {
+				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Ultra")
 				sentry.CaptureException(err)
 			}
 		}
@@ -95,14 +121,13 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 	return nil
 }
 
-// IsPaid checks if a user has access to full analysis for a specific mint using hybrid logic
-func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) bool {
-	// Lazy-init user credits row if not exists
+// IsPaid checks if a user has paid or eligible access for a specific mint.
+// isAPI=true enforces the Developer Portal rules (no single-payment fallback).
+// isAPI=false enforces the Marketing Portal rules (free 3 scans, sub, single pay).
+func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string, isAPI bool) bool {
 	_ = r.InitUserCredits(ctx, userID)
 
 	cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
-
-	// 1. Redis Check (Stateless Optimization - represents any previously verified access)
 	if r.redis != nil {
 		val, err := r.redis.Get(ctx, cacheKey).Result()
 		if err == nil && val == "true" {
@@ -111,14 +136,39 @@ func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) boo
 		}
 	}
 
-	// STEP 1: Check active subscription
-	if r.IsProSubscriber(ctx, userID) {
+	// FREE TIER CHECK
+	freeCacheKind := "ui"
+	freeLimit := int64(FreeUIScans)
+	if isAPI {
+		freeCacheKind = "api"
+		freeLimit = int64(FreeAPIUses)
+	}
+	used := r.GetFreeUsage(ctx, userID, freeCacheKind)
+	if used < freeLimit {
+		r.IncrementFreeUsage(ctx, userID, freeCacheKind)
 		r.cacheAccess(ctx, userID, mint)
-		log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "SUBSCRIPTION").Msg("Access granted")
+		log.Info().Str("user", userID).Str("mint", mint).Int64("used", used).Str("kind", freeCacheKind).Msg("Access granted via Free Tier")
 		return true
 	}
 
-	// STEP 2: Check and deduct credit
+	// SUBSCRIPTION CHECK (both UI and API)
+	if r.IsProSubscriber(ctx, userID) {
+		remaining, _ := r.GetQuotaRemaining(ctx, userID)
+		if remaining > 0 {
+			r.IncrementUsage(ctx, userID)
+			r.cacheAccess(ctx, userID, mint)
+			log.Info().Str("user", userID).Str("mint", mint).Int64("remaining", remaining).Str("usage_type", "SUBSCRIPTION").Msg("Access granted")
+			return true
+		}
+		log.Warn().Str("user", userID).Msg("Subscription quota exhausted")
+	}
+
+	// API path: no single-payment fallback — only subscription allowed
+	if isAPI {
+		return false
+	}
+
+	// UI ONLY: Credit deduction fallback
 	deducted, err := r.DeductCredit(ctx, userID)
 	if err == nil && deducted {
 		r.cacheAccess(ctx, userID, mint)
@@ -126,7 +176,7 @@ func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) boo
 		return true
 	}
 
-	// STEP 3: Check Postgres payments (Eceran)
+	// UI ONLY: Single payment lookup (eceran $0.50)
 	var count int
 	query := `SELECT COUNT(*) FROM payments WHERE user_id = $1 AND mint_address = $2 AND status = 'success'`
 	err = r.db.QueryRowContext(ctx, query, userID, mint).Scan(&count)
@@ -134,16 +184,63 @@ func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string) boo
 		log.Error().Err(err).Msg("Database query for payment status failed")
 		return false
 	}
-
 	isPaid := count > 0
-
-	// Backfill cache if paid
 	if isPaid {
 		r.cacheAccess(ctx, userID, mint)
 		log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "SINGLE_PAY").Msg("Access granted")
 	}
-
 	return isPaid
+}
+
+// GetFreeUsage returns the number of free scans used by a user.
+// kind: 'ui' or 'api'
+func (r *PaymentRepository) GetFreeUsage(ctx context.Context, userID, kind string) int64 {
+	// 1. Try Redis first
+	redisKey := fmt.Sprintf("free:user:%s:%s", userID, kind)
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, redisKey).Int64()
+		if err == nil {
+			return val
+		}
+	}
+
+	// 2. DB Fallback
+	col := "free_scans_used"
+	if kind == "api" {
+		col = "free_api_used"
+	}
+	var used int64
+	query := fmt.Sprintf(`SELECT %s FROM users WHERE id = $1`, col)
+	if err := r.db.QueryRowContext(ctx, query, userID).Scan(&used); err != nil {
+		return 0
+	}
+	// Backfill Redis
+	if r.redis != nil {
+		r.redis.Set(ctx, redisKey, used, 30*24*time.Hour)
+	}
+	return used
+}
+
+// IncrementFreeUsage atomically increments the free usage counter in Redis and DB.
+// kind: 'ui' or 'api'
+func (r *PaymentRepository) IncrementFreeUsage(ctx context.Context, userID, kind string) {
+	// 1. Increment Redis atomically
+	redisKey := fmt.Sprintf("free:user:%s:%s", userID, kind)
+	if r.redis != nil {
+		r.redis.Incr(ctx, redisKey)
+	}
+
+	// 2. Async DB sync
+	col := "free_scans_used"
+	if kind == "api" {
+		col = "free_api_used"
+	}
+	go func() {
+		query := fmt.Sprintf(`UPDATE users SET %s = %s + 1 WHERE id = $1`, col, col)
+		if _, err := r.db.ExecContext(context.Background(), query, userID); err != nil {
+			log.Error().Err(err).Str("user", userID).Str("kind", kind).Msg("Failed to sync free usage to DB")
+		}
+	}()
 }
 
 // IsProSubscriber checks if the user has a 'active' subscription that hasn't expired.
@@ -250,8 +347,8 @@ func (r *PaymentRepository) AddUserCredits(ctx context.Context, userID string, a
 	return err
 }
 
-// ActivateSubscription activates or extends a user subscription
-func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, status string, durationDays int) error {
+// ActivateSubscription activates or extends a user subscription with quota
+func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, status string, durationDays, quota int) error {
 	if durationDays <= 0 {
 		log.Error().Str("user", userID).Int("duration", durationDays).Msg("Invalid subscription duration")
 		sentry.CaptureMessage(fmt.Sprintf("Invalid subscription duration for user %s: %d", userID, durationDays))
@@ -259,17 +356,75 @@ func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, st
 	}
 
 	query := `
-		INSERT INTO user_subscriptions (user_id, status, expires_at)
-		VALUES ($1, $2, now() + interval '1 day' * $3)
+		INSERT INTO user_subscriptions (user_id, status, expires_at, quota_limit, current_usage)
+		VALUES ($1, $2, now() + interval '1 day' * $3, $4, 0)
 		ON CONFLICT (user_id) DO UPDATE
-		SET status = $2, expires_at = CASE 
-			WHEN user_subscriptions.expires_at > now() THEN user_subscriptions.expires_at + interval '1 day' * $3
-			ELSE now() + interval '1 day' * $3
-		END, updated_at = now()
+		SET status = $2, 
+			quota_limit = $4,
+			current_usage = 0,
+			expires_at = CASE 
+				WHEN user_subscriptions.expires_at > now() THEN user_subscriptions.expires_at + interval '1 day' * $3
+				ELSE now() + interval '1 day' * $3
+			END, 
+			updated_at = now()
 	`
-	_, err := r.db.ExecContext(ctx, query, userID, status, durationDays)
+	_, err := r.db.ExecContext(ctx, query, userID, status, durationDays, quota)
 	if err != nil {
 		log.Error().Err(err).Str("user", userID).Msg("Failed to activate subscription")
 	}
+
+	// Reset Redis usage counter on activation/renewal
+	if r.redis != nil {
+		usageKey := fmt.Sprintf("usage:user:%s", userID) // simplified period for now as per instructions
+		r.redis.Del(ctx, usageKey)
+	}
+
 	return err
+}
+
+// IncrementUsage increments the Redis usage counter for a user
+func (r *PaymentRepository) IncrementUsage(ctx context.Context, userID string) {
+	if r.redis == nil {
+		return
+	}
+	usageKey := fmt.Sprintf("usage:user:%s", userID)
+	r.redis.Incr(ctx, usageKey)
+}
+
+// GetQuotaRemaining returns the remaining scans for a Pro user
+func (r *PaymentRepository) GetQuotaRemaining(ctx context.Context, userID string) (int64, error) {
+	// 1. Get Limit from Postgres (Cached in redis sub_limit:<userID> for 5m)
+	limitKey := fmt.Sprintf("sub_limit:%s", userID)
+	var limit int64
+
+	if r.redis != nil {
+		val, err := r.redis.Get(ctx, limitKey).Int64()
+		if err == nil {
+			limit = val
+		}
+	}
+
+	if limit == 0 {
+		query := `SELECT quota_limit FROM user_subscriptions WHERE user_id = $1 AND status = 'active'`
+		err := r.db.QueryRowContext(ctx, query, userID).Scan(&limit)
+		if err != nil {
+			return 0, err
+		}
+		if r.redis != nil {
+			r.redis.Set(ctx, limitKey, limit, 5*time.Minute)
+		}
+	}
+
+	// 2. Get Current Usage from Redis
+	usageKey := fmt.Sprintf("usage:user:%s", userID)
+	var usage int64
+	if r.redis != nil {
+		usage, _ = r.redis.Get(ctx, usageKey).Int64()
+	}
+
+	remaining := limit - usage
+	if remaining < 0 {
+		remaining = 0
+	}
+	return remaining, nil
 }

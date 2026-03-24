@@ -33,6 +33,9 @@ type TokenState struct {
 	TradesPerMin   float32
 	FunderAddr     string
 	IsHighMomentum bool
+	Score          int
+	Verdict        string
+	VelocityRank   string // 'LOW', 'MEDIUM', 'STORM'
 }
 
 type PortalMessage struct {
@@ -95,6 +98,22 @@ func (s *PortalSubscriber) connectAndListen(ctx context.Context) error {
 		log.Warn().Msg("Failed to subscribeAllTokenTrades, attempting fallback...")
 	}
 
+	// 3. Keep-alive loop (Ping/Pong)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					log.Error().Err(err).Msg("Failed to send ping to Pump Portal")
+					return
+				}
+			}
+		}
+	}()
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -127,12 +146,33 @@ func (s *PortalSubscriber) handleNewToken(pm PortalMessage) {
 	s.tokenCreators.Store(pm.Mint, pm.Trader)
 
 	state := &TokenState{
-		Mint:      pm.Mint,
-		Creator:   pm.Trader,
-		StartTime: time.Now(),
+		Mint:         pm.Mint,
+		Creator:      pm.Trader,
+		StartTime:    time.Now(),
+		VelocityRank: "LOW",
+		FunderAddr:   pm.URI, // Using URI as a proxy for metadata if available
 	}
 	s.tokenStats.Store(pm.Mint, state)
 
+	// Trigger Background Intelligence Analysis (Industrial Grade)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if s.brainClient == nil {
+			log.Warn().Str("mint", pm.Mint).Msg("BrainClient not available for initial analysis")
+			return
+		}
+		resp, err := s.brainClient.AnalyzeToken(ctx, pm.Mint, pm.Trader, 0, false, 0, false, false, false)
+		if err == nil {
+			state.Score = int(resp.Score)
+			state.Verdict = resp.Verdict
+			log.Info().Str("mint", pm.Mint).Int("score", state.Score).Msg("Initial Sniper Intelligence Ready")
+			s.cacheState(pm.Mint, state)
+		} else {
+			log.Warn().Err(err).Str("mint", pm.Mint).Msg("Initial Sniper Analysis failed (relying on trade metrics)")
+		}
+	}()
 	// Push to Redis immediately
 	s.cacheState(pm.Mint, state)
 }
@@ -162,9 +202,14 @@ func (s *PortalSubscriber) handleTrade(pm PortalMessage) {
 		log.Warn().Str("mint", pm.Mint).Msg("DANGER: Dev Sniping Detected!")
 	}
 
-	// Calculate velocity (trades/min)
+	// Calculate velocity (trades/min) and Rank
 	if duration.Seconds() > 0 {
 		state.TradesPerMin = float32(float64(state.TradeCount) / duration.Minutes())
+		if state.TradesPerMin > 100 {
+			state.VelocityRank = "STORM"
+		} else {
+			state.VelocityRank = "LOW"
+		}
 	}
 
 	// Cache updated state in Redis with TTL 60s

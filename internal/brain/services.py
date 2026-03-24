@@ -80,12 +80,22 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         if bonding_progress >= 50.0:
             score += 15
             reasons.append(f"HIGH MOMENTUM: {bonding_progress:.1f}% Bonding Curve (+15)")
+        elif bonding_progress >= 20.0:
+            score += 5
+            reasons.append(f"Early Momentum: {bonding_progress:.1f}% Bonding Curve (+5)")
 
         # 8. Organic Growth vs Bot Velocity
-        if trade_velocity > 50.0:
-            # Very high velocity might be bot wash trading, but user wants to reward momentum
+        # High velocity is 50+ trades per minute.
+        # If velocity is extremely high (e.g. > 200) without high bonding progress, it might be bots/wash trading.
+        if trade_velocity > 150.0 and bonding_progress < 10.0:
+            score -= 30
+            reasons.append(f"SUSPICIOUS VELOCITY: {trade_velocity:.1f} tpm, low progress (-30)")
+        elif trade_velocity > 50.0:
             score += 10
-            reasons.append(f"High trade velocity: {trade_velocity:.1f} tpm (+10)")
+            reasons.append(f"Strong trade velocity: {trade_velocity:.1f} tpm (+10)")
+        elif trade_velocity > 10.0:
+            score += 5
+            reasons.append(f"Organic trade activity: {trade_velocity:.1f} tpm (+5)")
         # Determine Verdict
         if score >= 80:
             verdict = "SAFE"

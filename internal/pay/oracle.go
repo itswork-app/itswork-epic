@@ -13,8 +13,11 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var (
+	JupiterAPIURL = "https://api.jup.ag/price/v2?ids=SOL"
+)
+
 const (
-	JupiterAPIURL     = "https://api.jup.ag/price/v2?ids=SOL"
 	RedisPriceKey     = "solana_cutoff_price"
 	HardFallbackPrice = 91.2
 )

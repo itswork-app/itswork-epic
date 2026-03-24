@@ -15,8 +15,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
-var AuthMiddleware = ClerkMiddleware()
-
 // SetupRouter initializes the Gin engine and creates the routes.
 func SetupRouter(
 	pub *Publisher,
@@ -24,6 +22,7 @@ func SetupRouter(
 	payRepo *repository.PaymentRepository,
 	payService *pay.PayService,
 	portalSub *processor.PortalSubscriber,
+	authRepo *repository.AuthRepository,
 ) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -47,9 +46,14 @@ func SetupRouter(
 	})
 
 	api := r.Group("/api/v1")
-	api.Use(AuthMiddleware)
+	api.Use(DualAuthMiddleware(authRepo, payRepo))
 	{
+		// MARKETING PORTAL: UI-only endpoint (Clerk JWT)
 		api.GET("/token/:mint", func(c *gin.Context) {
+			if authMethod, _ := c.Get("authMethod"); authMethod == "api_key" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "UI endpoint only. Use /api/v1/sniper/verdict/:mint for bot access."})
+				return
+			}
 			TokenAnalysisHandler(c, repo, payRepo)
 		})
 
@@ -57,15 +61,16 @@ func SetupRouter(
 			VerifyPaymentHandler(c, payService, payRepo)
 		})
 
-		api.POST("/pay/bundle", func(c *gin.Context) {
-			CreateBundlePaymentHandler(c, payService, payRepo)
-		})
-
-		api.POST("/api/v1/pay/subscribe", func(c *gin.Context) {
+		api.POST("/pay/subscribe", func(c *gin.Context) {
 			CreateSubscriptionPaymentHandler(c, payService, payRepo)
 		})
-		// --- SNIPER ENGINE: LOW LATENCY ---
+
+		// DEVELOPER PORTAL: API-only endpoint (X-API-KEY)
 		api.GET("/sniper/verdict/:mint", func(c *gin.Context) {
+			if authMethod, _ := c.Get("authMethod"); authMethod != "api_key" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "API endpoint only. Use X-API-KEY header for bot access."})
+				return
+			}
 			SniperVerdictHandler(c, portalSub)
 		})
 	}
@@ -82,19 +87,19 @@ func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber)
 
 	state, ok := portalSub.GetSniperVerdict(mint)
 	if !ok {
-		// Attempt to fetch from Redis if not in local map
-		// But instructions say < 50ms, usually local map or Redis is fine.
-		// The subscriber already pushes to Redis, so let's stick to the subscriber's GetSniperVerdict or direct Redis.
 		c.JSON(http.StatusNotFound, gin.H{"error": "Token not being tracked or not found in Pump Portal stream"})
 		return
 	}
 
-	// Minimalist High-Speed JSON Output
+	// Minimalist High-Speed JSON Output for Bots (Merging fields for maximum utility)
 	c.JSON(http.StatusOK, gin.H{
 		"mint":             state.Mint,
+		"score":            state.Score,
+		"verdict":          state.Verdict,
 		"bonding_progress": state.LastProgress,
-		"dev_sniped":       state.DevSniped,
+		"velocity_rank":    state.VelocityRank,
 		"trade_velocity":   state.TradesPerMin,
+		"dev_sniped":       state.DevSniped,
 		"is_momentum":      state.IsHighMomentum,
 	})
 }
@@ -140,11 +145,37 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 		return
 	}
 
-	// Access Control: Identify user via Clerk JWT
+	// Access Control: Identify user and auth method
 	userID := GetUserID(c)
+	authMethod, _ := c.Get("authMethod")
 	isPaid := false
+
 	if userID != "" {
-		isPaid = payRepo.IsPaid(c.Request.Context(), userID, mint)
+		if authMethod == "api_key" {
+			// STRICT: Bots (API Key) must have active subscription. No bundle/eceran.
+			if payRepo.IsProSubscriber(c.Request.Context(), userID) {
+				remaining, _ := payRepo.GetQuotaRemaining(c.Request.Context(), userID)
+				if remaining > 0 {
+					payRepo.IncrementUsage(c.Request.Context(), userID)
+					isPaid = true
+				} else {
+					c.JSON(http.StatusPaymentRequired, gin.H{
+						"error":  "Quota Exhausted",
+						"reason": "API Key quota reached. Please upgrade to ULTRA or ENTERPRISE.",
+					})
+					return
+				}
+			} else {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":  "Subscription Required",
+					"reason": "Bot API access is restricted to Pro/Ultra/Enterprise subscribers. Bundle credits are for Dashboard use only.",
+				})
+				return
+			}
+		} else {
+			// Dashboard (Human) uses hybrid logic including free tier
+			isPaid = payRepo.IsPaid(c.Request.Context(), userID, mint, false)
+		}
 	}
 
 	if !isPaid {

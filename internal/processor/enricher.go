@@ -170,8 +170,25 @@ func (e *Enricher) parseRenounced(asset map[string]interface{}) bool {
 	if !ok || len(authorities) == 0 {
 		return true
 	}
-	// If any authority exists, it's not fully renounced
-	return false
+
+	for _, a := range authorities {
+		authMap, ok := a.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		scopes, ok := authMap["scopes"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, s := range scopes {
+			scopeStr, _ := s.(string)
+			// If mint or freeze authority still exists, it's not fully renounced
+			if scopeStr == "mint" || scopeStr == "freeze" {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (e *Enricher) parseSocials(asset map[string]interface{}) bool {
