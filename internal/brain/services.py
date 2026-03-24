@@ -1,7 +1,19 @@
 import logging
+import os
+import sys
+
+# Standardize path resolution for gRPC stubs across project
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+
+import sentry_sdk
 
 # Ensure __init__.py allows access or just import directly
 from api.proto import CONTRACTS_pb2, CONTRACTS_pb2_grpc
+
+sentry_sdk.init(
+    dsn=os.environ.get("SENTRY_DSN_PYTHON"),
+    traces_sample_rate=1.0,
+)
 
 
 class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
@@ -16,7 +28,7 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
 
         logging.info(f"Received AnalyzeToken request => mint: {mint_address}, creator: {creator_address}")
 
-        import os
+        logging.info(f"Received AnalyzeToken request => mint: {mint_address}, creator: {creator_address}")
 
         # Load configurable thresholds from environment variables
         min_wallet_age_hours = int(os.environ.get("MIN_WALLET_AGE_HOURS", 24))
@@ -27,6 +39,8 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         is_lp_burned = request.is_lp_burned
         holder_concentration = request.top_10_holder_concentration_percent
         funding_check_passed = request.funding_source_check_passed
+        is_renounced = request.is_renounced
+        has_socials = request.has_socials
 
         # Base score
         score = 100
@@ -51,6 +65,16 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         if not is_lp_burned:
             score = min(score, 50)
             reasons.append("LP is not burned (Score capped at 50)")
+
+        # 5. Contract Renouncement (Critical Override - Auto-Danger)
+        if not is_renounced:
+            score -= 50
+            reasons.append("Contract Ownership NOT renounced (Auto-Danger) (-50)")
+
+        # 6. Social Signal Check
+        if not has_socials:
+            score -= 20
+            reasons.append("No social metadata (X/Telegram) found (-20)")
 
         # Determine Verdict
         if score >= 80:

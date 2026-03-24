@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
+var AuthMiddleware = ClerkMiddleware()
+
 // SetupRouter initializes the Gin engine and creates the routes.
 func SetupRouter(
 	pub *Publisher,
@@ -42,21 +44,25 @@ func SetupRouter(
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	r.GET("/api/v1/token/:mint", func(c *gin.Context) {
-		TokenAnalysisHandler(c, repo, payRepo)
-	})
+	api := r.Group("/api/v1")
+	api.Use(AuthMiddleware)
+	{
+		api.GET("/token/:mint", func(c *gin.Context) {
+			TokenAnalysisHandler(c, repo, payRepo)
+		})
 
-	r.GET("/api/v1/pay/verify/:reference", func(c *gin.Context) {
-		VerifyPaymentHandler(c, payService, payRepo)
-	})
+		api.GET("/pay/verify/:reference", func(c *gin.Context) {
+			VerifyPaymentHandler(c, payService, payRepo)
+		})
 
-	r.POST("/api/v1/pay/bundle", func(c *gin.Context) {
-		CreateBundlePaymentHandler(c, payService, payRepo)
-	})
+		api.POST("/pay/bundle", func(c *gin.Context) {
+			CreateBundlePaymentHandler(c, payService, payRepo)
+		})
 
-	r.POST("/api/v1/pay/subscribe", func(c *gin.Context) {
-		CreateSubscriptionPaymentHandler(c, payService, payRepo)
-	})
+		api.POST("/api/v1/pay/subscribe", func(c *gin.Context) {
+			CreateSubscriptionPaymentHandler(c, payService, payRepo)
+		})
+	}
 
 	return r
 }
@@ -102,8 +108,8 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 		return
 	}
 
-	// Access Control: Identify user via Clerk Header (Mocked for now in header X-User-Id)
-	userID := c.GetHeader("X-User-Id")
+	// Access Control: Identify user via Clerk JWT
+	userID := GetUserID(c)
 	isPaid := false
 	if userID != "" {
 		isPaid = payRepo.IsPaid(c.Request.Context(), userID, mint)

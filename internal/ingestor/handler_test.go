@@ -15,6 +15,16 @@ import (
 	"itswork.app/internal/repository"
 )
 
+func init() {
+	AuthMiddleware = func(c *gin.Context) {
+		userID := c.GetHeader("X-User-Id")
+		if userID != "" {
+			c.Set("userID", userID)
+		}
+		c.Next()
+	}
+}
+
 func TestHeliusWebhookHandler_Valid(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

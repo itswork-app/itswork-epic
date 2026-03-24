@@ -21,6 +21,7 @@ type Brainger interface {
 	AnalyzeToken(
 		ctx context.Context, mint, creator string, walletAge int32,
 		isLpBurned bool, concentration float32, fundingPassed bool,
+		isRenounced bool, hasSocials bool,
 	) (*proto.VerdictResponse, error)
 }
 
@@ -37,6 +38,8 @@ type HeliusPayload struct {
 	IsLpBurned                      bool    `json:"is_lp_burned"`
 	Top10HolderConcentrationPercent float32 `json:"top_10_holder_concentration_percent"`
 	FundingSourceCheckPassed        bool    `json:"funding_source_check_passed"`
+	IsRenounced                     bool    `json:"is_renounced"`
+	HasSocials                      bool    `json:"has_socials"`
 }
 
 // PubSubSubscriber defines the interface for pulling messages
@@ -142,6 +145,8 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 		payload.IsLpBurned,
 		payload.Top10HolderConcentrationPercent,
 		payload.FundingSourceCheckPassed,
+		payload.IsRenounced,
+		payload.HasSocials,
 	)
 	if err != nil {
 		log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Intelligence Analysis failed")

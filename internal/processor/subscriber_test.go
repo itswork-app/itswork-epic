@@ -13,13 +13,22 @@ import (
 )
 
 type mockBrainger struct {
-	err error
+	err              error
+	AnalyzeTokenFunc func(
+		ctx context.Context, mint, creator string, walletAge int32,
+		isLpBurned bool, concentration float32, fundingPassed bool,
+		isRenounced bool, hasSocials bool,
+	) (*proto.VerdictResponse, error)
 }
 
 func (m *mockBrainger) AnalyzeToken(
 	ctx context.Context, mint, creator string, walletAge int32,
 	isLpBurned bool, concentration float32, fundingPassed bool,
+	isRenounced bool, hasSocials bool,
 ) (*proto.VerdictResponse, error) {
+	if m.AnalyzeTokenFunc != nil {
+		return m.AnalyzeTokenFunc(ctx, mint, creator, walletAge, isLpBurned, concentration, fundingPassed, isRenounced, hasSocials)
+	}
 	if m.err != nil {
 		return nil, m.err
 	}
