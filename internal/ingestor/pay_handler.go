@@ -19,9 +19,9 @@ func CreatePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 		return
 	}
 
-	userID := c.GetHeader("X-User-Id")
+	userID := GetUserID(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required (X-User-Id missing)"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return
 	}
 
@@ -49,48 +49,14 @@ func CreatePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 	})
 }
 
-// CreateBundlePaymentHandler initiates a payment for credit bundles
-func CreateBundlePaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) {
-	bundleType := c.Query("type") // BUNDLE_50, BUNDLE_100
-	if bundleType == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing bundle type parameter"})
-		return
-	}
-
-	userID := c.GetHeader("X-User-Id")
-	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
-		return
-	}
-
-	payURL, reference, amountStr := payService.GenerateBundlePaymentURL(c.Request.Context(), userID, bundleType)
-
-	// Save pending payment record to trigger fulfillment later
-
-	amount, _ := strconv.ParseFloat(amountStr, 64)
-
-	payment := &repository.Payment{
-		UserID:      userID,
-		MintAddress: bundleType,
-		Reference:   reference,
-		AmountSol:   amount,
-	}
-	if err := payRepo.SavePayment(c.Request.Context(), payment); err != nil {
-		log.Error().Err(err).Str("user", userID).Str("mint", bundleType).Msg("Failed to save pending payment record")
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"payment_url": payURL,
-		"reference":   reference,
-		"type":        bundleType,
-	})
-}
+// CreateBundlePaymentHandler is removed in Nexus V1 Final Spec.
+// Bundle credits are deprecated. Use CreateSubscriptionPaymentHandler instead.
 
 // CreateSubscriptionPaymentHandler initiates a payment for Pro subscription
 func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) {
 	planType := c.DefaultQuery("plan", "SUB_MONTHLY_PRO")
 
-	userID := c.GetHeader("X-User-Id")
+	userID := GetUserID(c)
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 		return

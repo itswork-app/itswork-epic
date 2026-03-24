@@ -3,6 +3,7 @@ package pay
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,14 +14,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
+
+	"itswork.app/internal/repository"
 )
 
 const (
-	PriceSingleUSD    = 1.5
-	PriceBundle50USD  = 35.0
-	PriceBundle100USD = 60.0
-	PriceWeeklyUSD    = 15.0
-	PriceMonthlyUSD   = 49.0
+	PriceSingleUSD  = 0.50
+	PriceWeeklyUSD  = 15.0
+	PriceMonthlyUSD = 49.0
+	PriceUltraUSD   = 199.0
 )
 
 type PayService struct {
@@ -32,13 +34,15 @@ type PayService struct {
 	HeliusAPIKey   string
 	BaseURL        string
 	Redis          *redis.Client
+	PayRepo        *repository.PaymentRepository
+	AuthRepo       *repository.AuthRepository
 }
 
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func NewPayService(rdb *redis.Client) *PayService {
+func NewPayService(rdb *redis.Client, payRepo *repository.PaymentRepository, authRepo *repository.AuthRepository) *PayService {
 	scanPrice := os.Getenv("SCAN_PRICE_SOL")
 	if scanPrice == "" {
 		scanPrice = "0.01" // fallback if orbit fails
@@ -65,7 +69,31 @@ func NewPayService(rdb *redis.Client) *PayService {
 		HeliusAPIKey:   os.Getenv("HELIUS_API_KEY"),
 		BaseURL:        "https://mainnet.helius-rpc.com",
 		Redis:          rdb,
+		PayRepo:        payRepo,
+		AuthRepo:       authRepo,
 	}
+}
+
+// GenerateAPIKey creates a new API key for a user if they are a Pro subscriber.
+// Returns the raw key (only shown once) or an error.
+func (s *PayService) GenerateAPIKey(ctx context.Context, userID, label string) (string, error) {
+	// 1. Authorization: Only Monthly Pro subscribers can have Bot API Keys
+	if !s.PayRepo.IsProSubscriber(ctx, userID) {
+		return "", fmt.Errorf("API Keys are reserved for Pro Subscribers")
+	}
+
+	// 2. Generate secure random key
+	rawKey := fmt.Sprintf("sk_%s_%s", userID[:4], uuid.New().String())
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(rawKey)))
+
+	// 3. Persist hash in DB
+	err := s.AuthRepo.SaveAPIKey(ctx, userID, hash, label)
+	if err != nil {
+		return "", err
+	}
+
+	log.Info().Str("user", userID).Msg("New Bot API Key generated")
+	return rawKey, nil
 }
 
 // GeneratePaymentURL creates a Solana Pay compliant URL for single scans
@@ -84,33 +112,8 @@ func (s *PayService) GeneratePaymentURL(ctx context.Context, mint string) (strin
 	return solanaURL, reference, amount
 }
 
-// GenerateBundlePaymentURL creates a URL for purchasing credit bundles
-func (s *PayService) GenerateBundlePaymentURL(ctx context.Context, userID, bundleType string) (string, string, string) {
-	reference := uuid.New().String()
-	address := s.ProjectWallet
-	solPrice := s.GetSolPriceUSD(ctx)
-
-	var amount string
-	var label string
-	switch bundleType {
-	case "BUNDLE_50":
-		amount = ConvertUSDToSOL(PriceBundle50USD, solPrice)
-		label = "ItsWork 50 Credits"
-	case "BUNDLE_100":
-		// Let's assume B100 is 60 USD (discounted from 70).
-		amount = ConvertUSDToSOL(PriceBundle100USD, solPrice)
-		label = "ItsWork 100 Credits"
-	default:
-		amount = ConvertUSDToSOL(PriceSingleUSD, solPrice)
-		label = "ItsWork Credits"
-	}
-
-	memo := url.QueryEscape(fmt.Sprintf("BUNDLE:%s:%s:%s", bundleType, userID, reference))
-	solanaURL := fmt.Sprintf("solana:%s?amount=%s&reference=%s&label=%s&memo=%s",
-		address, amount, reference, url.QueryEscape(label), memo)
-
-	return solanaURL, reference, amount
-}
+// GenerateBundlePaymentURL is removed in Nexus V1 Final Spec.
+// Bundle credits are deprecated. Users subscribe via GenerateSubscriptionPaymentURL.
 
 // GenerateSubscriptionPaymentURL creates a URL for monthly subscription
 func (s *PayService) GenerateSubscriptionPaymentURL(ctx context.Context, userID, planType string) (string, string, string) {
@@ -127,6 +130,9 @@ func (s *PayService) GenerateSubscriptionPaymentURL(ctx context.Context, userID,
 	case "SUB_MONTHLY_PRO":
 		amount = ConvertUSDToSOL(PriceMonthlyUSD, solPrice)
 		label = "ItsWork Monthly Pro"
+	case "SUB_ULTRA_PRO":
+		amount = ConvertUSDToSOL(PriceUltraUSD, solPrice)
+		label = "ItsWork Ultra Pro"
 	default:
 		amount = ConvertUSDToSOL(PriceMonthlyUSD, solPrice)
 		label = "ItsWork Subscription"
@@ -241,7 +247,6 @@ func (s *PayService) VerifyTransaction(ctx context.Context, reference string) (b
 		return false, nil // Failed transaction, do not unlock
 	}
 
-	log.Info().Str("reference_key", reference).Str("signature", signature).Msg("Real On-Chain Payment Verified")
 	log.Info().Str("reference_key", reference).Str("signature", signature).Msg("Real On-Chain Payment Verified")
 	return true, nil
 }

@@ -2,6 +2,8 @@ package ingestor
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -11,27 +13,62 @@ import (
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+
+	"itswork.app/internal/repository"
 )
 
-func ClerkMiddleware() gin.HandlerFunc {
+func DualAuthMiddleware(authRepo *repository.AuthRepository, payRepo *repository.PaymentRepository) gin.HandlerFunc {
 	secretKey := os.Getenv("CLERK_SECRET_KEY")
 	if secretKey == "" {
-		log.Warn().Msg("CLERK_SECRET_KEY not set, auth middleware will be permissive for development (DANGER)")
+		log.Warn().Msg("CLERK_SECRET_KEY not set")
 	}
 	clerk.SetKey(secretKey)
 
 	return func(c *gin.Context) {
+		// 1. Check for X-API-KEY (Bot Sniper Gateway)
+		apiKey := c.GetHeader("X-API-KEY")
+		if apiKey != "" {
+			// Hash the key (SHA256 for industrial security)
+			hash := fmt.Sprintf("%x", sha256.Sum256([]byte(apiKey)))
+
+			userID, err := authRepo.GetUserIDByAPIKey(c.Request.Context(), hash)
+			if err != nil {
+				log.Error().Err(err).Msg("API Key validation error")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal auth error"})
+				c.Abort()
+				return
+			}
+
+			if userID != "" {
+				c.Set("userID", userID)
+				c.Set("authMethod", "api_key")
+
+				// Inject Quota Header for Bot developers
+				remaining, _ := payRepo.GetQuotaRemaining(c.Request.Context(), userID)
+				c.Header("X-Quota-Remaining", fmt.Sprintf("%d", remaining))
+
+				log.Debug().Str("userID", userID).Msg("Bot authenticated via API Key")
+				c.Next()
+				return
+			}
+
+			// Invalid API Key
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API Key"})
+			c.Abort()
+			return
+		}
+
+		// 2. Fallback to Authorization: Bearer <JWT> (Dashboard)
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			// Fallback for development if needed, but the mission is Zero Placeholder
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required (X-API-KEY or Bearer token)"})
 			c.Abort()
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header format"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization format"})
 			c.Abort()
 			return
 		}
@@ -48,12 +85,9 @@ func ClerkMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Set UserID in context
 		userID := claims.Subject
 		c.Set("userID", userID)
-
-		// Optionally fetch full user if needed (Industrial Grade)
-		// but claims.Subject should be enough for IsPaid
+		c.Set("authMethod", "clerk_jwt")
 		log.Debug().Str("userID", userID).Msg("User authenticated via Clerk")
 		c.Next()
 	}

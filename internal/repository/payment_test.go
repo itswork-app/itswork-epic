@@ -97,7 +97,7 @@ func TestUpdatePaymentStatus_SubscriptionFulfillment(t *testing.T) {
 
 	// Fulfillment: ActivateSubscription
 	mock.ExpectExec("INSERT INTO user_subscriptions").
-		WithArgs("user123", "active").
+		WithArgs("user123", "active", 30, 5000).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	err = repo.UpdatePaymentStatus(ctx, "ref-sub", "success")
@@ -121,7 +121,7 @@ func TestIsPaid_CacheHit(t *testing.T) {
 	err = mr.Set("payment_verified:user123:mint456", "true")
 	assert.NoError(t, err)
 
-	paid := repo.IsPaid(ctx, "user123", "mint456")
+	paid := repo.IsPaid(ctx, "user123", "mint456", false)
 	assert.True(t, paid)
 }
 
@@ -156,7 +156,7 @@ func TestIsPaid_CacheMiss_DBHit(t *testing.T) {
 		WithArgs("user123", "mint456").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
-	paid := repo.IsPaid(ctx, "user123", "mint456")
+	paid := repo.IsPaid(ctx, "user123", "mint456", false)
 	assert.True(t, paid)
 }
 
@@ -175,7 +175,12 @@ func TestIsPaid_Subscription(t *testing.T) {
 		WithArgs("user123").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
-	paid := repo.IsPaid(ctx, "user123", "mint456")
+	// GetQuotaRemaining check
+	mock.ExpectQuery("SELECT quota_limit FROM user_subscriptions").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"quota_limit"}).AddRow(5000))
+
+	paid := repo.IsPaid(ctx, "user123", "mint456", false)
 	assert.True(t, paid)
 }
 
@@ -202,7 +207,7 @@ func TestIsPaid_Credit(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(9))
 	mock.ExpectCommit()
 
-	paid := repo.IsPaid(ctx, "user123", "mint456")
+	paid := repo.IsPaid(ctx, "user123", "mint456", false)
 	assert.True(t, paid)
 }
 
@@ -216,6 +221,11 @@ func TestIsPaid_UsageLimitExceeded(t *testing.T) {
 
 	// Lazy-init
 	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Free tier exhausted (used=3, limit=3 => fall through)
+	mock.ExpectQuery("SELECT free_scans_used FROM users").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"free_scans_used"}).AddRow(3))
 
 	// 1. Subscription check fails
 	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
@@ -234,7 +244,7 @@ func TestIsPaid_UsageLimitExceeded(t *testing.T) {
 		WithArgs("user123", "mint456").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-	paid := repo.IsPaid(ctx, "user123", "mint456")
+	paid := repo.IsPaid(ctx, "user123", "mint456", false)
 	assert.False(t, paid)
 }
 
@@ -318,9 +328,126 @@ func TestActivateSubscription_Error(t *testing.T) {
 	ctx := context.Background()
 
 	mock.ExpectExec("INSERT INTO user_subscriptions").
-		WithArgs("user123", "active", 30).
+		WithArgs("user123", "active", 30, 5000).
 		WillReturnError(sql.ErrConnDone)
 
-	err = repo.ActivateSubscription(ctx, "user123", "active", 30)
+	err = repo.ActivateSubscription(ctx, "user123", "active", 30, 5000)
 	assert.Error(t, err)
+}
+
+func TestGetQuotaRemaining_DBFallback(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	mock.ExpectQuery("SELECT quota_limit FROM user_subscriptions").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"quota_limit"}).AddRow(5000))
+
+	remaining, err := repo.GetQuotaRemaining(ctx, "user123")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5000), remaining)
+}
+
+func TestGetQuotaRemaining_RedisFallback(t *testing.T) {
+	mr, rdb := setupTestRedis(t)
+	defer mr.Close()
+
+	repo := NewPaymentRepository(nil, rdb)
+	ctx := context.Background()
+
+	// Use the actual Redis key format: sub_limit:{userID}
+	err := mr.Set("sub_limit:user123", "1234")
+	assert.NoError(t, err)
+
+	remaining, err := repo.GetQuotaRemaining(ctx, "user123")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1234), remaining)
+}
+
+func TestIncrementUsage_RedisNil(t *testing.T) {
+	db, _, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	// With nil Redis, IncrementUsage just returns without panicking
+	repo.IncrementUsage(ctx, "user123")
+}
+
+func TestGetFreeUsage_RedisFallback(t *testing.T) {
+	mr, rdb := setupTestRedis(t)
+	defer mr.Close()
+
+	repo := NewPaymentRepository(nil, rdb)
+	ctx := context.Background()
+
+	err := mr.Set("free:user:user123:ui", "2")
+	assert.NoError(t, err)
+
+	used := repo.GetFreeUsage(ctx, "user123", "ui")
+	assert.Equal(t, int64(2), used)
+}
+
+func TestGetFreeUsage_DBFallback(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	mock.ExpectQuery("SELECT free_api_used FROM users").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"free_api_used"}).AddRow(5))
+
+	used := repo.GetFreeUsage(ctx, "user123", "api")
+	assert.Equal(t, int64(5), used)
+}
+
+func TestIsPaid_FreeTierAPI(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	// Lazy-init
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Free tier: used=5 < limit=10 => grant free access
+	mock.ExpectQuery("SELECT free_api_used FROM users").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"free_api_used"}).AddRow(5))
+
+	// IncrementFreeUsage async DB (goroutine) - won't be mocked but won't block test
+	paid := repo.IsPaid(ctx, "user123", "mintapi", true)
+	assert.True(t, paid)
+	// Give goroutine time to finish (it will log an error since mock has no remaining expectations)
+}
+
+func TestIsPaid_FreeTierUI(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	// Lazy-init
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
+
+	// Free tier: used=1 < limit=3 => grant free access for UI
+	mock.ExpectQuery("SELECT free_scans_used FROM users").
+		WithArgs("user123").
+		WillReturnRows(sqlmock.NewRows([]string{"free_scans_used"}).AddRow(1))
+
+	paid := repo.IsPaid(ctx, "user123", "mintui", false)
+	assert.True(t, paid)
 }

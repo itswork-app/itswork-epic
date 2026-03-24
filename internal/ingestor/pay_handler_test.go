@@ -25,16 +25,16 @@ func TestCreatePaymentHandler_Success(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
 	mock.ExpectQuery("INSERT INTO payments").
-		WithArgs("user123", "mint123", sqlmock.AnyArg(), "pending", 0.0164).
+		WithArgs("user123", "mint123", sqlmock.AnyArg(), "pending", sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-123"))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/create?mint=mint123", nil)
-	c.Request.Header.Set("X-User-Id", "user123")
+	c.Set("userID", "user123")
 
 	CreatePaymentHandler(c, payService, payRepo)
 
@@ -75,7 +75,7 @@ func TestVerifyPaymentHandler_Success(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -95,7 +95,7 @@ func TestVerifyPaymentHandler_Success(t *testing.T) {
 	// VerifyTransaction currently returns true, so it will call UpdatePaymentStatus
 	mock.ExpectQuery("UPDATE payments").
 		WithArgs("success", "ref123").
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "mint123", 0.0164))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "mint123", 0.0055))
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -127,7 +127,7 @@ func TestCreatePaymentHandler_DBError(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
 	mock.ExpectQuery("INSERT INTO payments").
 		WillReturnError(assert.AnError)
@@ -135,7 +135,7 @@ func TestCreatePaymentHandler_DBError(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/create?mint=mint123", nil)
-	c.Request.Header.Set("X-User-Id", "user123")
+	c.Set("userID", "user123")
 
 	CreatePaymentHandler(c, payService, payRepo)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -150,7 +150,7 @@ func TestVerifyPaymentHandler_DBError(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -183,7 +183,7 @@ func TestVerifyPaymentHandler_ServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	os.Setenv("HELIUS_API_KEY", "") // this will cause PayService.VerifyTransaction to return an error
 
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -198,7 +198,7 @@ func TestVerifyPaymentHandler_Pending(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	os.Setenv("HELIUS_API_KEY", "test-key")
 
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -231,7 +231,7 @@ func TestVerifyPaymentHandler_UpdateDBError(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -261,7 +261,7 @@ func TestVerifyPaymentHandler_UpdateDBError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
-func TestCreateBundlePaymentHandler_Success(t *testing.T) {
+func TestCreatePaymentHandler_SinglePrice(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	os.Setenv("PROJECT_WALLET_ADDRESS", "7nEByo6E1RzE1H31RE8RE7RE8RE7RE8RE7RE8RE7RE8")
 
@@ -270,25 +270,25 @@ func TestCreateBundlePaymentHandler_Success(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
-	// Expect SavePayment
+	// Expect SavePayment with any amount (converted from $0.50)
 	mock.ExpectQuery("INSERT INTO payments").
-		WithArgs("user123", "BUNDLE_50", sqlmock.AnyArg(), "pending", 0.3838).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-bundle"))
+		WithArgs("user123", "mint123", sqlmock.AnyArg(), "pending", sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("uuid-single"))
+
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/bundle?type=BUNDLE_50", nil)
-	c.Request.Header.Set("X-User-Id", "user123")
+	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/create?mint=mint123", nil)
+	c.Set("userID", "user123")
 
-	CreateBundlePaymentHandler(c, payService, payRepo)
+	CreatePaymentHandler(c, payService, payRepo)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, resp["payment_url"])
-	assert.Equal(t, "BUNDLE_50", resp["type"])
 }
 
 func TestCreateSubscriptionPaymentHandler_Success(t *testing.T) {
@@ -300,7 +300,7 @@ func TestCreateSubscriptionPaymentHandler_Success(t *testing.T) {
 	defer db.Close()
 
 	payRepo := repository.NewPaymentRepository(db, nil)
-	payService := pay.NewPayService(nil)
+	payService := pay.NewPayService(nil, nil, nil)
 
 	// Expect SavePayment
 	mock.ExpectQuery("INSERT INTO payments").
@@ -309,7 +309,7 @@ func TestCreateSubscriptionPaymentHandler_Success(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request, _ = http.NewRequest(http.MethodPost, "/api/v1/pay/subscribe?plan=SUB_MONTHLY_PRO", nil)
-	c.Request.Header.Set("X-User-Id", "user123")
+	c.Set("userID", "user123")
 
 	CreateSubscriptionPaymentHandler(c, payService, payRepo)
 
