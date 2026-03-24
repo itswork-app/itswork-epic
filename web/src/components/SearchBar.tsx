@@ -9,7 +9,14 @@ import { Button } from "@/components/ui/button";
 export function SearchBar() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ score: number; verdict: string; teaser?: boolean } | null>(null);
+  const [result, setResult] = useState<{ 
+    score: number; 
+    verdict: string; 
+    reason?: string;
+    creator_reputation?: string;
+    insider_risk?: string;
+    teaser?: boolean 
+  } | null>(null);
   const [error, setError] = useState("");
   const { getToken, isSignedIn } = useAuth();
 
@@ -30,16 +37,21 @@ export function SearchBar() {
       });
 
       if (!res.ok) {
+        if (res.status === 403) throw new Error("Access Denied: Please upgrade your plan to scan this token.");
+        if (res.status === 429) throw new Error("Rate Limit Exceeded: Slow down, agent.");
         throw new Error("Failed to fetch token intelligence");
       }
       const data = await res.json();
       setResult({
         score: data.score || 0,
         verdict: data.verdict || "UNKNOWN",
+        reason: data.reason,
+        creator_reputation: data.creator_reputation,
+        insider_risk: data.insider_risk,
         teaser: data.teaser || false,
       });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Auditing service currently unavailable.";
+      const errorMessage = err instanceof Error ? err.message : "ItsWork Intelligence Service is unreachable. Check your connection.";
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -114,6 +126,28 @@ export function SearchBar() {
                 <div className="flex items-baseline space-x-1">
                   <span className="font-mono text-5xl sm:text-6xl font-bold text-white tracking-tighter">{result.score}</span>
                   <span className="font-mono text-2xl text-slate-500">/100</span>
+                </div>
+              </div>
+
+              {result.reason && (
+                <div className="w-full p-6 rounded-2xl bg-white/5 border border-white/5 text-left space-y-3">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Narrative Reason</p>
+                  <p className="text-sm text-slate-300 font-sans leading-relaxed">{result.reason}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4 w-full">
+                <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-left">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase mb-1">Creator Reputation</p>
+                  <p className={`font-bold text-sm ${result.creator_reputation === "TRUSTED" ? "text-emerald-400" : "text-rose-500"}`}>
+                    {result.creator_reputation || (result.teaser ? "RESTRICTED" : "UNKNOWN")}
+                  </p>
+                </div>
+                <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-left">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase mb-1">Insider Risk</p>
+                  <p className={`font-bold text-sm ${result.insider_risk === "Low" ? "text-emerald-400" : "text-rose-500"}`}>
+                    {result.insider_risk || (result.teaser ? "RESTRICTED" : "NORMAL")}
+                  </p>
                 </div>
               </div>
             </div>

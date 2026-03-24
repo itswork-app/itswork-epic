@@ -182,8 +182,8 @@ func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 	}
 
 	if e.HeliusAPIKey == "" {
-		log.Warn().Msg("HELIUS_API_KEY missing, skipping real enrichment (using fallback data)")
-		return nil
+		log.Error().Msg("HELIUS_API_KEY missing - Critical Provider Config Failure")
+		return fmt.Errorf("Missing Provider Config: HELIUS_API_KEY is required for real-time enrichment")
 	}
 
 	rpcURL := fmt.Sprintf("%s/?api-key=%s", e.BaseURL, e.HeliusAPIKey)

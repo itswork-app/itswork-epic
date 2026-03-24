@@ -53,7 +53,29 @@ func (s *PayService) GetSolPriceUSD(ctx context.Context) float64 {
 		resp.Body.Close()
 	}
 
-	// 2. Fallback to Redis
+	// 2. Fallback to Binance API (PR-PRODUCTION-READY)
+	binanceURL := "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDC"
+	resp, err = http.Get(binanceURL)
+	if err == nil && resp.StatusCode == http.StatusOK {
+		var binResp struct {
+			Price string `json:"price"`
+		}
+		if decodeErr := json.NewDecoder(resp.Body).Decode(&binResp); decodeErr == nil {
+			price, parseErr := strconv.ParseFloat(binResp.Price, 64)
+			if parseErr == nil && price > 0 {
+				log.Info().Float64("price", price).Msg("Using Binance Fallback Price")
+				// Update Redis cutoff
+				if s.Redis != nil {
+					s.Redis.Set(ctx, RedisPriceKey, binResp.Price, 24*time.Hour)
+				}
+				resp.Body.Close()
+				return price
+			}
+		}
+		resp.Body.Close()
+	}
+
+	// 3. Fallback to Redis
 	if err != nil || (resp != nil && resp.StatusCode != http.StatusOK) {
 		log.Error().Err(err).Msg("Jupiter API failed, falling back to Redis cutoff")
 		sentry.CaptureException(fmt.Errorf("Jupiter API Failure: %v", err))

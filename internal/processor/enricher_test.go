@@ -23,9 +23,8 @@ func TestEnricher_Enrich_NoKey(t *testing.T) {
 	payload := &HeliusPayload{}
 
 	err := e.Enrich(context.Background(), payload)
-	assert.NoError(t, err)
-	// Should fallback cleanly
-	assert.Equal(t, float32(50), payload.Top10HolderConcentrationPercent)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Missing Provider Config")
 }
 
 func TestEnricher_Enrich_InvalidKey_NetworkError(t *testing.T) {

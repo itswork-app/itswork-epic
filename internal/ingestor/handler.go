@@ -30,6 +30,7 @@ func SetupRouter(
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
+	r.Use(gin.Logger()) // Added for production visibility
 	r.Use(gin.Recovery())
 
 	// Sentry Middleware (Captures panics and sends to Sentry)
@@ -40,12 +41,26 @@ func SetupRouter(
 	// OpenTelemetry Middleware (Distributed Tracing)
 	r.Use(otelgin.Middleware("itswork-ingestor"))
 
-	// CORS Middleware (PR-WIRE-REPAIR)
+	// CORS Middleware (PR-PRODUCTION-READY)
 	r.Use(func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+		allowedOrigins := map[string]bool{
+			"http://localhost:3000":   true,
+			"https://itswork.app":      true,
+			"https://www.itswork.app":  true,
+		}
+
+		if allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+		} else if origin == "" {
+			// Allow non-browser (e.g. curl/postman) or same-origin
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+
 		corsHeaders := "Content-Type, Content-Length, Accept-Encoding, " +
 			"X-CSRF-Token, Authorization, accept, origin, " +
 			"Cache-Control, X-Requested-With, X-API-KEY"
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", corsHeaders)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
