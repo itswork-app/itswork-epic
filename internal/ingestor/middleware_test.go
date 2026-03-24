@@ -98,7 +98,7 @@ func TestDualAuthMiddleware_InvalidBearer(t *testing.T) {
 func TestDualAuthMiddleware_ClerkJWT_Failure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	os.Setenv("CLERK_SECRET_KEY", "test-key")
-	
+
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request, _ = http.NewRequest(http.MethodGet, "/", nil)
