@@ -13,6 +13,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+
+	"itswork.app/api/proto"
 )
 
 func TestPortalSubscriber_HandleMessage(t *testing.T) {
@@ -20,7 +22,11 @@ func TestPortalSubscriber_HandleMessage(t *testing.T) {
 	defer mr.Close()
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	brain := &mockBrainger{}
+	brain := &mockBrainger{
+		AnalyzeTokenFunc: func(ctx context.Context, mint, creator string, walletAge int32, isLpBurned bool, concentration float32, fundingPassed bool, isRenounced bool, hasSocials bool, bondingProgress, tradeVelocity float32, hasGoldens bool, goldens []string, reputation string, failedCount int32, insiderRisk string) (*proto.VerdictResponse, error) {
+			return &proto.VerdictResponse{Score: 80, Verdict: "BULLISH"}, nil
+		},
+	}
 
 	s := NewPortalSubscriber(rdb, brain)
 

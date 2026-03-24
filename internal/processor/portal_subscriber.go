@@ -34,8 +34,10 @@ type TokenState struct {
 	FunderAddr     string
 	IsHighMomentum bool
 	Score          int
-	Verdict        string
-	VelocityRank   string // 'LOW', 'MEDIUM', 'STORM'
+	Verdict           string
+	VelocityRank      string // 'LOW', 'MEDIUM', 'STORM'
+	CreatorReputation string
+	InsiderRisk       string
 }
 
 type PortalMessage struct {
@@ -163,7 +165,19 @@ func (s *PortalSubscriber) handleNewToken(pm PortalMessage) {
 			log.Warn().Str("mint", pm.Mint).Msg("BrainClient not available for initial analysis")
 			return
 		}
-		resp, err := s.brainClient.AnalyzeToken(ctx, pm.Mint, pm.Trader, 0, false, 0, false, false, false)
+		resp, err := s.brainClient.AnalyzeToken(
+			ctx, pm.Mint, pm.Trader,
+			0,      // Wallet age unknown from portal
+			false,  // IsLpBurned unknown
+			0,      // Concentration unknown
+			false,  // Funding check unknown
+			false,  // IsRenounced unknown
+			false,  // HasSocials unknown
+			float32(pm.VSolInBondingCurve/85.0*100.0), // Bonding progress from portal
+			0,      // Trade velocity calculated later
+			false, nil, // Golden wallet detection via subscriber only or expanded here?
+			"Unknown", 0, "Low", // Reputation/Insider default for portal launch
+		)
 		if err == nil {
 			state.Score = int(resp.Score)
 			state.Verdict = resp.Verdict

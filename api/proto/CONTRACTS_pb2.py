@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x61pi/proto/CONTRACTS.proto\x12\x14itswork.intelligence\"\xa4\x02\n\x0cTokenRequest\x12\x14\n\x0cmint_address\x18\x01 \x01(\t\x12\x17\n\x0f\x63reator_address\x18\x02 \x01(\t\x12 \n\x18\x63reator_wallet_age_hours\x18\x03 \x01(\x05\x12\x14\n\x0cis_lp_burned\x18\x04 \x01(\x08\x12+\n#top_10_holder_concentration_percent\x18\x05 \x01(\x02\x12#\n\x1b\x66unding_source_check_passed\x18\x06 \x01(\x08\x12\x14\n\x0cis_renounced\x18\x07 \x01(\x08\x12\x13\n\x0bhas_socials\x18\x08 \x01(\x08\x12\x18\n\x10\x62onding_progress\x18\t \x01(\x02\x12\x16\n\x0etrade_velocity\x18\n \x01(\x02\"A\n\x0fVerdictResponse\x12\r\n\x05score\x18\x01 \x01(\x05\x12\x0f\n\x07verdict\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t2p\n\x13IntelligenceService\x12Y\n\x0c\x41nalyzeToken\x12\".itswork.intelligence.TokenRequest\x1a%.itswork.intelligence.VerdictResponseB\x17Z\x15itswork.app/api/protob\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x61pi/proto/CONTRACTS.proto\x12\x14itswork.intelligence\"\xa9\x03\n\x0cTokenRequest\x12\x14\n\x0cmint_address\x18\x01 \x01(\t\x12\x17\n\x0f\x63reator_address\x18\x02 \x01(\t\x12 \n\x18\x63reator_wallet_age_hours\x18\x03 \x01(\x05\x12\x14\n\x0cis_lp_burned\x18\x04 \x01(\x08\x12+\n#top_10_holder_concentration_percent\x18\x05 \x01(\x02\x12#\n\x1b\x66unding_source_check_passed\x18\x06 \x01(\x08\x12\x14\n\x0cis_renounced\x18\x07 \x01(\x08\x12\x13\n\x0bhas_socials\x18\x08 \x01(\x08\x12\x18\n\x10\x62onding_progress\x18\t \x01(\x02\x12\x16\n\x0etrade_velocity\x18\n \x01(\x02\x12\x1a\n\x12has_golden_wallets\x18\x0c \x01(\x08\x12\x16\n\x0egolden_wallets\x18\r \x03(\t\x12\x1a\n\x12\x63reator_reputation\x18\x0e \x01(\t\x12\x1d\n\x15\x66\x61iled_projects_count\x18\x0f \x01(\x05\x12\x14\n\x0cinsider_risk\x18\x10 \x01(\t\"A\n\x0fVerdictResponse\x12\r\n\x05score\x18\x01 \x01(\x05\x12\x0f\n\x07verdict\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t2p\n\x13IntelligenceService\x12Y\n\x0c\x41nalyzeToken\x12\".itswork.intelligence.TokenRequest\x1a%.itswork.intelligence.VerdictResponseB\x17Z\x15itswork.app/api/protob\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,9 +33,9 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z\025itswork.app/api/proto'
   _globals['_TOKENREQUEST']._serialized_start=52
-  _globals['_TOKENREQUEST']._serialized_end=344
-  _globals['_VERDICTRESPONSE']._serialized_start=346
-  _globals['_VERDICTRESPONSE']._serialized_end=411
-  _globals['_INTELLIGENCESERVICE']._serialized_start=413
-  _globals['_INTELLIGENCESERVICE']._serialized_end=525
+  _globals['_TOKENREQUEST']._serialized_end=477
+  _globals['_VERDICTRESPONSE']._serialized_start=479
+  _globals['_VERDICTRESPONSE']._serialized_end=544
+  _globals['_INTELLIGENCESERVICE']._serialized_start=546
+  _globals['_INTELLIGENCESERVICE']._serialized_end=658
 # @@protoc_insertion_point(module_scope)

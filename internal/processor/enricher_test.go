@@ -11,13 +11,13 @@ import (
 )
 
 func TestNewEnricher(t *testing.T) {
-	e := NewEnricher("test-key")
+	e := NewEnricher("test-key", nil)
 	assert.NotNil(t, e)
 	assert.Equal(t, "test-key", e.HeliusAPIKey)
 }
 
 func TestEnricher_Enrich_NoKey(t *testing.T) {
-	e := NewEnricher("")
+	e := NewEnricher("", nil)
 	payload := &HeliusPayload{}
 
 	err := e.Enrich(context.Background(), payload)
@@ -27,7 +27,7 @@ func TestEnricher_Enrich_NoKey(t *testing.T) {
 }
 
 func TestEnricher_Enrich_InvalidKey_NetworkError(t *testing.T) {
-	e := NewEnricher("invalid")
+	e := NewEnricher("invalid", nil)
 	payload := &HeliusPayload{
 		MintAddress:    "mint123",
 		CreatorAddress: "creator123",
@@ -84,7 +84,7 @@ func TestEnricher_Enrich_SuccessMock(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	e := NewEnricher("test-key")
+	e := NewEnricher("test-key", nil)
 	e.BaseURL = ts.URL
 
 	payload := &HeliusPayload{
@@ -123,7 +123,7 @@ func TestEnricher_Enrich_NoSignatures(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	e := NewEnricher("test-key")
+	e := NewEnricher("test-key", nil)
 	e.BaseURL = ts.URL
 
 	payload := &HeliusPayload{
@@ -144,7 +144,7 @@ func TestEnricher_Enrich_BadJSON(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	e := NewEnricher("test-key")
+	e := NewEnricher("test-key", nil)
 	e.BaseURL = ts.URL
 
 	payload := &HeliusPayload{

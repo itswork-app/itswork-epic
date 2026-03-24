@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"cloud.google.com/go/pubsub/v2" // Standardized to use v2 across project
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/api/option"
 
@@ -22,12 +23,16 @@ type Brainger interface {
 		ctx context.Context, mint, creator string, walletAge int32,
 		isLpBurned bool, concentration float32, fundingPassed bool,
 		isRenounced bool, hasSocials bool,
+		bondingProgress, tradeVelocity float32,
+		hasGoldens bool, goldens []string,
+		reputation string, failedCount int32, insiderRisk string,
 	) (*proto.VerdictResponse, error)
 }
 
 // VaultRepository defines the interface for data persistence
 type VaultRepository interface {
 	SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error
+	GetRedis() *redis.Client
 }
 
 // HeliusPayload represents the simplified structure to extract needed fields
@@ -38,8 +43,13 @@ type HeliusPayload struct {
 	IsLpBurned                      bool    `json:"is_lp_burned"`
 	Top10HolderConcentrationPercent float32 `json:"top_10_holder_concentration_percent"`
 	FundingSourceCheckPassed        bool    `json:"funding_source_check_passed"`
-	IsRenounced                     bool    `json:"is_renounced"`
-	HasSocials                      bool    `json:"has_socials"`
+	IsRenounced                     bool     `json:"is_renounced"`
+	HasSocials                      bool     `json:"has_socials"`
+	HasGoldenWallets                bool     `json:"has_goldens"`
+	GoldenWallets                   []string `json:"golden_wallets"`
+	CreatorReputation               string   `json:"creator_reputation"`
+	FailedProjectsCount             int      `json:"failed_projects_count"`
+	InsiderRisk                     string   `json:"insider_risk"`
 }
 
 // PubSubSubscriber defines the interface for pulling messages
@@ -87,7 +97,7 @@ func InitSubscriber(brainClient Brainger, repo VaultRepository) (*Subscriber, er
 	}
 
 	apiKey := os.Getenv("HELIUS_API_KEY")
-	enricher := NewEnricher(apiKey)
+	enricher := NewEnricher(apiKey, repo.GetRedis())
 
 	var sub PubSubSubscriber
 	if client != nil {
@@ -147,6 +157,12 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 		payload.FundingSourceCheckPassed,
 		payload.IsRenounced,
 		payload.HasSocials,
+		0, 0, // BondingProgress, TradeVelocity
+		payload.HasGoldenWallets,
+		payload.GoldenWallets,
+		payload.CreatorReputation,
+		int32(payload.FailedProjectsCount),
+		payload.InsiderRisk,
 	)
 	if err != nil {
 		log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Intelligence Analysis failed")

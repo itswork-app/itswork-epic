@@ -115,6 +115,8 @@ func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber,
 		"trade_velocity":   state.TradesPerMin,
 		"dev_sniped":       state.DevSniped,
 		"is_momentum":      state.IsHighMomentum,
+		"creator_reputation": state.CreatorReputation,
+		"insider_risk":      state.InsiderRisk,
 	})
 }
 
