@@ -105,7 +105,7 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         # 9. Golden Wallet Alpha (Elite Signal)
         if has_golden_wallets:
             score += 30
-            goldens_str = ", ".join(golden_wallets[:3]) # Show top 3
+            goldens_str = ", ".join(golden_wallets[:3])  # Show top 3
             msg = f"ELITE SIGNAL: {len(golden_wallets)} high win-rate buyers detected ({goldens_str}...) (+30)"
             reasons.append(msg)
 
