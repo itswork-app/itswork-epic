@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
@@ -96,9 +97,13 @@ func TestUpdatePaymentStatus_SubscriptionFulfillment(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"user_id", "mint_address", "amount_sol"}).AddRow("user123", "SUB_MONTHLY_PRO", 2.0))
 
 	// Fulfillment: ActivateSubscription
+	// PR-SUBSCRIPTION-PRESTIGE: new signature(ctx, userID, planType, duration, quota)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT plan_type, COALESCE").WillReturnError(sql.ErrNoRows)
 	mock.ExpectExec("INSERT INTO user_subscriptions").
-		WithArgs("user123", "active", 30, 200).
+		WithArgs("user123", "SUB_MONTHLY_PRO", 2, 30, 200).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
 
 	err = repo.UpdatePaymentStatus(ctx, "ref-sub", "success")
 	assert.NoError(t, err)
@@ -328,11 +333,14 @@ func TestActivateSubscription_Error(t *testing.T) {
 	repo := NewPaymentRepository(db, nil)
 	ctx := context.Background()
 
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT plan_type, COALESCE").WillReturnError(sql.ErrNoRows)
 	mock.ExpectExec("INSERT INTO user_subscriptions").
-		WithArgs("user123", "active", 30, 200).
+		WithArgs("user123", "SUB_MONTHLY_PRO", 2, 30, 200).
 		WillReturnError(sql.ErrConnDone)
+	mock.ExpectRollback()
 
-	err = repo.ActivateSubscription(ctx, "user123", "active", 30, 200)
+	err = repo.ActivateSubscription(ctx, "user123", "SUB_MONTHLY_PRO", 30, 200)
 	assert.Error(t, err)
 }
 
@@ -538,4 +546,62 @@ func TestCheckAccess_FreeTierDoubleSpendPrevention(t *testing.T) {
 	// Next CheckAccess should fail
 	granted, _, _ = repo.CheckAccess(ctx, userID, "another_mint", false)
 	assert.False(t, granted)
+}
+
+func TestActivateSubscription_UpgradeCarryOver(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	userID := "user_upgrade"
+	oldExpiry := time.Now().Add(10 * 24 * time.Hour)
+
+	// 1. Mock Fetching Current Subscription (Tier 1 - Weekly)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT plan_type, COALESCE").
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"plan_type", "plan_tier", "status", "quota_limit", "current_usage", "expires_at"}).
+			AddRow("SUB_WEEKLY_PRO", 1, "active", 50, 10, oldExpiry))
+
+	// 2. Mock Upgrade to Tier 2 (Monthly)
+	// leftover = 50 - 10 = 40
+	// new_limit = 200 + 40 = 240
+	mock.ExpectExec("UPDATE user_subscriptions").
+		WithArgs("SUB_MONTHLY_PRO", 2, 30, 200, 40, userID).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	err = repo.ActivateSubscription(ctx, userID, "SUB_MONTHLY_PRO", 30, 200)
+	assert.NoError(t, err)
+}
+
+func TestActivateSubscription_QueuedDowngrade(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	userID := "user_downgrade"
+	oldExpiry := time.Now().Add(10 * 24 * time.Hour)
+
+	// 1. Mock Fetching Current Subscription (Tier 3 - Ultra)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT plan_type, COALESCE").
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"plan_type", "plan_tier", "status", "quota_limit", "current_usage", "expires_at"}).
+			AddRow("SUB_ULTRA_PRO", 3, "active", 1200, 100, oldExpiry))
+
+	// 2. Mock Downgrade to Tier 2 (Monthly)
+	mock.ExpectExec("UPDATE user_subscriptions").
+		WithArgs("SUB_MONTHLY_PRO", userID).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	err = repo.ActivateSubscription(ctx, userID, "SUB_MONTHLY_PRO", 30, 200)
+	assert.NoError(t, err)
 }
