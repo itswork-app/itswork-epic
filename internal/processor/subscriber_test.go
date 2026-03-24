@@ -54,7 +54,7 @@ func (m *mockRepo) GetRedis() *redis.Client {
 	return nil
 }
 
-func (m *mockRepo) SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error {
+func (m *mockRepo) SaveAnalysis(ctx context.Context, mint, creator, verdict, reason, creatorRep, insiderRisk string, score int) error {
 	return m.err
 }
 

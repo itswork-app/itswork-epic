@@ -91,8 +91,23 @@ func (e *Enricher) checkGoldenWallets(ctx context.Context, mint string) (bool, [
 	return len(goldens) > 0, goldens
 }
 
-// checkCreatorReputation (PR-NEXUS-REPUTATION) checks for failed past projects using Helius getAssetsByOwner.
+// checkCreatorReputation (PR-NEXUS-INTELLIGENCE) checks for failed past projects using Helius getAssetsByOwner.
 func (e *Enricher) checkCreatorReputation(ctx context.Context, rpcURL, creator string) (string, int) {
+	// 1. Redis Cache Look-side (6 Hour TTL as per PR-NEXUS-INTELLIGENCE)
+	cacheKey := fmt.Sprintf("reputation:creator:%s", creator)
+	if e.redis != nil {
+		cached, err := e.redis.Get(ctx, cacheKey).Result()
+		if err == nil {
+			var result struct {
+				Label string `json:"label"`
+				Count int    `json:"count"`
+			}
+			if err := json.Unmarshal([]byte(cached), &result); err == nil {
+				return result.Label, result.Count
+			}
+		}
+	}
+
 	reqBody := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -106,12 +121,12 @@ func (e *Enricher) checkCreatorReputation(ctx context.Context, rpcURL, creator s
 	bodyBytes, _ := json.Marshal(reqBody)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
-		return "Normal", 0
+		return "UNKNOWN", 0
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := e.doWithRetry(ctx, req)
 	if err != nil {
-		return "Normal", 0
+		return "UNKNOWN", 0
 	}
 	defer resp.Body.Close()
 
@@ -121,26 +136,36 @@ func (e *Enricher) checkCreatorReputation(ctx context.Context, rpcURL, creator s
 		} `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return "Normal", 0
+		return "UNKNOWN", 0
 	}
 
 	failedProjects := 0
 	for _, item := range res.Result.Items {
-		// Heuristic: If token has no socials and likely zero value/liquidity proxy
+		// Heuristic (PR-NEXUS-INTELLIGENCE): Count assets as indicators of past activity.
+		// In a deeper implementation, we would cross-reference liquidity via DexScreener/Helius Price API.
 		content, _ := item["content"].(map[string]interface{})
 		metadata, _ := content["metadata"].(map[string]interface{})
 		if metadata != nil && metadata["name"] != "" {
-			// In deep mode, we'd check DEX volume here. For now, count distinct mints.
 			failedProjects++
 		}
 	}
 
+	var label string
 	if failedProjects > 5 {
-		return "SerialRugger", failedProjects
-	} else if failedProjects > 2 {
-		return "Warning", failedProjects
+		label = "SERIAL_RUGGER"
+	} else if failedProjects > 0 {
+		label = "UNKNOWN" // Heuristic: suspicious history but not yet a serial offender
+	} else {
+		label = "TRUSTED" // Heuristic: clean history
 	}
-	return "Safe", failedProjects
+
+	// 2. Save to Cache (6 Hours)
+	if e.redis != nil {
+		data, _ := json.Marshal(map[string]interface{}{"label": label, "count": failedProjects})
+		e.redis.Set(ctx, cacheKey, data, 6*time.Hour)
+	}
+
+	return label, failedProjects
 }
 
 // checkInsiderDistribution (PR-NEXUS-REPUTATION) marks tokens where >30% supply went to new wallets in first 5 mins.

@@ -30,4 +30,6 @@ message VerdictResponse {
   int32 score = 1; 
   string verdict = 2; 
   string reason = 3; 
+  string creator_reputation = 4;
+  string insider_risk = 5;
 }

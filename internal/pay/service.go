@@ -26,16 +26,14 @@ const (
 )
 
 type PayService struct {
-	ProjectWallet  string
-	ScanPrice      string // in SOL, e.g., "0.1"
-	Bundle50Price  string
-	Bundle100Price string
-	SubProPrice    string
-	HeliusAPIKey   string
-	BaseURL        string
-	Redis          *redis.Client
-	PayRepo        *repository.PaymentRepository
-	AuthRepo       *repository.AuthRepository
+	ProjectWallet string
+	ScanPrice     string // in SOL, e.g., "0.1"
+	SubProPrice   string
+	HeliusAPIKey  string
+	BaseURL       string
+	Redis         *redis.Client
+	PayRepo       *repository.PaymentRepository
+	AuthRepo      *repository.AuthRepository
 }
 
 var httpClient = &http.Client{
@@ -47,30 +45,20 @@ func NewPayService(rdb *redis.Client, payRepo *repository.PaymentRepository, aut
 	if scanPrice == "" {
 		scanPrice = "0.01" // fallback if orbit fails
 	}
-	bundle50 := os.Getenv("BUNDLE_50_PRICE_SOL")
-	if bundle50 == "" {
-		bundle50 = "0.4"
-	}
-	bundle100 := os.Getenv("BUNDLE_100_PRICE_SOL")
-	if bundle100 == "" {
-		bundle100 = "0.7"
-	}
 	subPro := os.Getenv("SUB_PRO_PRICE_SOL")
 	if subPro == "" {
 		subPro = "0.25"
 	}
 
 	return &PayService{
-		ProjectWallet:  os.Getenv("PROJECT_WALLET_ADDRESS"),
-		ScanPrice:      scanPrice,
-		Bundle50Price:  bundle50,
-		Bundle100Price: bundle100,
-		SubProPrice:    subPro,
-		HeliusAPIKey:   os.Getenv("HELIUS_API_KEY"),
-		BaseURL:        "https://mainnet.helius-rpc.com",
-		Redis:          rdb,
-		PayRepo:        payRepo,
-		AuthRepo:       authRepo,
+		ProjectWallet: os.Getenv("PROJECT_WALLET_ADDRESS"),
+		ScanPrice:     scanPrice,
+		SubProPrice:   subPro,
+		HeliusAPIKey:  os.Getenv("HELIUS_API_KEY"),
+		BaseURL:       "https://mainnet.helius-rpc.com",
+		Redis:         rdb,
+		PayRepo:       payRepo,
+		AuthRepo:      authRepo,
 	}
 }
 

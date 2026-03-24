@@ -95,25 +95,17 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 
 	if status == "success" {
 		// 1. Fulfillment Logic
-		if mint == "BUNDLE_50" {
-			if err := r.AddUserCredits(ctx, userID, 50); err != nil {
-				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: AddUserCredits 50")
-				sentry.CaptureException(err)
-			}
-		} else if mint == "BUNDLE_100" {
-			if err := r.AddUserCredits(ctx, userID, 100); err != nil {
-				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: AddUserCredits 100")
-				sentry.CaptureException(err)
-			}
-		} else if mint == "SUB_MONTHLY_PRO" {
+		if mint == "SUB_MONTHLY_PRO" {
 			if err := r.ActivateSubscription(ctx, userID, "SUB_MONTHLY_PRO", 30, QuotaProMonthly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Monthly")
 				sentry.CaptureException(err)
+				return err
 			}
 		} else if mint == "SUB_WEEKLY_PRO" {
 			if err := r.ActivateSubscription(ctx, userID, "SUB_WEEKLY_PRO", 7, QuotaProWeekly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Weekly")
 				sentry.CaptureException(err)
+				return err
 			}
 		} else if mint == "SUB_ULTRA_PRO" {
 			if err := r.ActivateSubscription(ctx, userID, "SUB_ULTRA_PRO", 30, QuotaUltraMonthly); err != nil {
@@ -146,16 +138,17 @@ func (r *PaymentRepository) CheckAccess(ctx context.Context, userID, mint string
 		}
 	}
 
-	// 2. FREE TIER CHECK
+	// 2. FREE TIER CHECK (Atomic PR-NEXUS-INTELLIGENCE)
 	kind := "ui"
 	limit := int64(FreeUIScans)
 	if isAPI {
 		kind = "api"
 		limit = int64(FreeAPIUses)
 	}
-	used := r.GetFreeUsage(ctx, userID, kind)
-	if used < limit {
-		return true, "free_" + kind, nil
+
+	granted, err := r.CheckAndIncrFreeUsage(ctx, userID, kind, limit)
+	if err == nil && granted {
+		return true, "free_atomic_" + kind, nil
 	}
 
 	// 3. SUBSCRIPTION CHECK
@@ -173,7 +166,7 @@ func (r *PaymentRepository) CheckAccess(ctx context.Context, userID, mint string
 	// 4. CREDIT CHECK
 	// Check balance without deducting
 	var balance int
-	err := r.db.QueryRowContext(ctx, "SELECT balance FROM user_credits WHERE user_id = $1", userID).Scan(&balance)
+	err = r.db.QueryRowContext(ctx, "SELECT balance FROM user_credits WHERE user_id = $1", userID).Scan(&balance)
 	if err == nil && balance > 0 {
 		return true, "credit", nil
 	}
@@ -195,11 +188,9 @@ func (r *PaymentRepository) CommitUsage(ctx context.Context, userID, kind, mint 
 	switch kind {
 	case "cache":
 		// No-op, already cached
-	case "free_ui":
-		r.IncrementFreeUsage(ctx, userID, "ui")
+	case "free_atomic_ui":
 		r.cacheAccess(ctx, userID, mint)
-	case "free_api":
-		r.IncrementFreeUsage(ctx, userID, "api")
+	case "free_atomic_api":
 		r.cacheAccess(ctx, userID, mint)
 	case "subscription":
 		r.IncrementUsage(ctx, userID)
@@ -250,29 +241,40 @@ func (r *PaymentRepository) GetFreeUsage(ctx context.Context, userID, kind strin
 	return used
 }
 
-// IncrementFreeUsage synchronously increments the free usage counter in Redis and async in DB.
-// Audit PR-FIX-V1: Synchronous Redis increment prevents double-spending.
-func (r *PaymentRepository) IncrementFreeUsage(ctx context.Context, userID, kind string) {
-	// 1. Increment Redis synchronously (CRITICAL for double-spend prevention)
-	redisKey := fmt.Sprintf("free:user:%s:%s", userID, kind)
-	if r.redis != nil {
-		err := r.redis.Incr(ctx, redisKey).Err()
-		if err != nil {
-			log.Error().Err(err).Str("user", userID).Msg("Failed to increment free usage in Redis")
-		}
+// CheckAndIncrFreeUsage (PR-NEXUS-INTELLIGENCE) uses Redis Lua to atomically verify and increment free usage.
+func (r *PaymentRepository) CheckAndIncrFreeUsage(ctx context.Context, userID, kind string, limit int64) (bool, error) {
+	if r.redis == nil {
+		return true, nil // Fail open if Redis is down (safe-to-fail)
 	}
 
-	// 2. Async DB sync
-	col := "free_scans_used"
-	if kind == "api" {
-		col = "free_api_used"
+	script := `
+		local used = redis.call('get', KEYS[1]) or "0"
+		if tonumber(used) >= tonumber(ARGV[1]) then
+			return -1
+		end
+		return redis.call('incr', KEYS[1])
+	`
+	redisKey := fmt.Sprintf("free:user:%s:%s", userID, kind)
+	res, err := r.redis.Eval(ctx, script, []string{redisKey}, limit).Result()
+	if err != nil {
+		return false, err
 	}
+
+	if res.(int64) == -1 {
+		return false, nil
+	}
+
+	// Async sync to DB for persistence
 	go func() {
-		query := fmt.Sprintf(`UPDATE users SET %s = %s + 1 WHERE id = $1`, col, col)
-		if _, err := r.db.ExecContext(context.Background(), query, userID); err != nil {
-			log.Error().Err(err).Str("user", userID).Str("kind", kind).Msg("Failed to sync free usage to DB")
+		col := "free_scans_used"
+		if kind == "api" {
+			col = "free_api_used"
 		}
+		query := fmt.Sprintf(`UPDATE users SET %s = %s + 1 WHERE id = $1`, col, col)
+		_, _ = r.db.Exec(query, userID)
 	}()
+
+	return true, nil
 }
 
 // IsProSubscriber checks if the user has a 'active' subscription that hasn't expired.

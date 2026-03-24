@@ -178,12 +178,14 @@ func (x *TokenRequest) GetInsiderRisk() string {
 }
 
 type VerdictResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Score         int32                  `protobuf:"varint,1,opt,name=score,proto3" json:"score,omitempty"`
-	Verdict       string                 `protobuf:"bytes,2,opt,name=verdict,proto3" json:"verdict,omitempty"`
-	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Score             int32                  `protobuf:"varint,1,opt,name=score,proto3" json:"score,omitempty"`
+	Verdict           string                 `protobuf:"bytes,2,opt,name=verdict,proto3" json:"verdict,omitempty"`
+	Reason            string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	CreatorReputation string                 `protobuf:"bytes,4,opt,name=creator_reputation,json=creatorReputation,proto3" json:"creator_reputation,omitempty"`
+	InsiderRisk       string                 `protobuf:"bytes,5,opt,name=insider_risk,json=insiderRisk,proto3" json:"insider_risk,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *VerdictResponse) Reset() {
@@ -237,6 +239,20 @@ func (x *VerdictResponse) GetReason() string {
 	return ""
 }
 
+func (x *VerdictResponse) GetCreatorReputation() string {
+	if x != nil {
+		return x.CreatorReputation
+	}
+	return ""
+}
+
+func (x *VerdictResponse) GetInsiderRisk() string {
+	if x != nil {
+		return x.InsiderRisk
+	}
+	return ""
+}
+
 var File_api_proto_CONTRACTS_proto protoreflect.FileDescriptor
 
 const file_api_proto_CONTRACTS_proto_rawDesc = "" +
@@ -260,11 +276,13 @@ const file_api_proto_CONTRACTS_proto_rawDesc = "" +
 	"\x0egolden_wallets\x18\r \x03(\tR\rgoldenWallets\x12-\n" +
 	"\x12creator_reputation\x18\x0e \x01(\tR\x11creatorReputation\x122\n" +
 	"\x15failed_projects_count\x18\x0f \x01(\x05R\x13failedProjectsCount\x12!\n" +
-	"\finsider_risk\x18\x10 \x01(\tR\vinsiderRisk\"Y\n" +
+	"\finsider_risk\x18\x10 \x01(\tR\vinsiderRisk\"\xab\x01\n" +
 	"\x0fVerdictResponse\x12\x14\n" +
 	"\x05score\x18\x01 \x01(\x05R\x05score\x12\x18\n" +
 	"\averdict\x18\x02 \x01(\tR\averdict\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason2p\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12-\n" +
+	"\x12creator_reputation\x18\x04 \x01(\tR\x11creatorReputation\x12!\n" +
+	"\finsider_risk\x18\x05 \x01(\tR\vinsiderRisk2p\n" +
 	"\x13IntelligenceService\x12Y\n" +
 	"\fAnalyzeToken\x12\".itswork.intelligence.TokenRequest\x1a%.itswork.intelligence.VerdictResponseB\x17Z\x15itswork.app/api/protob\x06proto3"
 

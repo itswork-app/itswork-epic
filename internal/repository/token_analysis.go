@@ -33,7 +33,10 @@ func (r *TokenRepository) GetRedis() *redis.Client {
 }
 
 // SaveAnalysis persists the AI verdict for a token using a nested transaction (Wallets + TokenAnalysis)
-func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error {
+func (r *TokenRepository) SaveAnalysis(
+	ctx context.Context, mint, creator, verdict, reason,
+	creatorRep, insiderRisk string, score int,
+) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -60,15 +63,17 @@ func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdi
 
 	// Stage 2: UPSERT Token Analysis linked by creatorID
 	analysisQuery := `
-		INSERT INTO token_analysis (mint_address, creator_id, verdict, rug_score, reason, processed_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO token_analysis (mint_address, creator_id, verdict, rug_score, reason, creator_reputation, insider_risk, processed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (mint_address) DO UPDATE SET
 			verdict = EXCLUDED.verdict,
 			rug_score = EXCLUDED.rug_score,
 			reason = EXCLUDED.reason,
+			creator_reputation = EXCLUDED.creator_reputation,
+			insider_risk = EXCLUDED.insider_risk,
 			processed_at = EXCLUDED.processed_at;
 	`
-	_, err = tx.ExecContext(ctx, analysisQuery, mint, creatorID, verdict, score, reason, time.Now())
+	_, err = tx.ExecContext(ctx, analysisQuery, mint, creatorID, verdict, score, reason, creatorRep, insiderRisk, time.Now())
 	if err != nil {
 		log.Error().Err(err).Str("mint", mint).Msg("Transaction failed: Token Analysis UPSERT error")
 		return err
@@ -103,16 +108,15 @@ func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string, isPaid b
 		}
 	}
 
-	// 2. Cache Miss: Query Database
 	query := `
-		SELECT verdict, rug_score, reason
+		SELECT verdict, rug_score, reason, COALESCE(creator_reputation, 'UNKNOWN'), COALESCE(insider_risk, 'NORMAL')
 		FROM token_analysis
 		WHERE mint_address = $1
 	`
-	var verdict, reason string
+	var verdict, reason, creatorRep, insiderRisk string
 	var score int32
 
-	err := r.db.QueryRowContext(ctx, query, mint).Scan(&verdict, &score, &reason)
+	err := r.db.QueryRowContext(ctx, query, mint).Scan(&verdict, &score, &reason, &creatorRep, &insiderRisk)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("analysis not found for mint: %s", mint)
@@ -122,9 +126,11 @@ func (r *TokenRepository) GetAnalysis(ctx context.Context, mint string, isPaid b
 	}
 
 	resp := &proto.VerdictResponse{
-		Score:   score,
-		Verdict: verdict,
-		Reason:  reason,
+		Score:             score,
+		Verdict:           verdict,
+		Reason:            reason,
+		CreatorReputation: creatorRep,
+		InsiderRisk:       insiderRisk,
 	}
 
 	// 3. Cache Miss Recovery: Store result in Redis configured with 5-minute TTL

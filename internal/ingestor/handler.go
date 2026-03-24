@@ -218,19 +218,41 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 	if err != nil {
 		// ANALYSIS FAILED: Atomic Quota Recovery — we do NOT call CommitUsage
 		log.Warn().Err(err).Str("mint", mint).Msg("Analysis failed, quota NOT deducted")
-		c.JSON(http.StatusNotFound, gin.H{"error": "Analysis failed or not found"})
+
+		if err.Error() == "analysis not found for mint: "+mint {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Analysis not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Analysis failed internally"})
+		}
+		return
+	}
+
+	// Teaser Logic (PR-NEXUS-INTELLIGENCE)
+	isTeaser := (c.Query("teaser") == "true" || authMethod == "public")
+
+	if isTeaser {
+		// Teaser Mode: Scrub sensitive intelligence
+		c.JSON(http.StatusOK, gin.H{
+			"mint":    mint,
+			"score":   resp.Score,
+			"verdict": resp.Verdict,
+			"teaser":  true,
+			"message": "Upgrade to unlock creator reputation and holder insights.",
+		})
 		return
 	}
 
 	// Success: GOAL ACHIEVED — NOW we commit the usage
 	payRepo.CommitUsage(c.Request.Context(), userID, accessKind, mint)
 
-	// Gated Response Logic (Succcess)
+	// Gated Response Logic (Full Success)
 	c.JSON(http.StatusOK, gin.H{
-		"mint":    mint,
-		"score":   resp.Score,
-		"verdict": resp.Verdict,
-		"is_paid": true,
-		"reason":  resp.Reason,
+		"mint":               mint,
+		"score":              resp.Score,
+		"verdict":            resp.Verdict,
+		"reason":             resp.Reason,
+		"creator_reputation": resp.CreatorReputation,
+		"insider_risk":       resp.InsiderRisk,
+		"is_paid":            true,
 	})
 }

@@ -173,7 +173,7 @@ func (s *PortalSubscriber) handleNewToken(pm PortalMessage) {
 			go func() {
 				rpcURL := fmt.Sprintf("%s/?api-key=%s", s.enricher.BaseURL, s.enricher.HeliusAPIKey)
 				reputation, _ := s.enricher.checkCreatorReputation(context.Background(), rpcURL, pm.Trader)
-				if reputation == "Safe" {
+				if reputation == "TRUSTED" {
 					log.Info().Str("mint", pm.Mint).Msg("ALPHA SIGNAL: Creator is Safe. Adding to potential_alpha_tokens.")
 					if s.redisClient != nil {
 						s.redisClient.SAdd(context.Background(), "potential_alpha_tokens", pm.Mint)
