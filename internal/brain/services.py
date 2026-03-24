@@ -89,7 +89,7 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         # If velocity is extremely high (e.g. > 200) without high bonding progress, it might be bots/wash trading.
         if trade_velocity > 150.0 and bonding_progress < 10.0:
             score -= 30
-            reasons.append(f"SUSPICIOUS VELOCITY: {trade_velocity:.1f} tpm with low progress. Possible wash trading (-30)")
+            reasons.append(f"SUSPICIOUS VELOCITY: {trade_velocity:.1f} tpm, low progress (-30)")
         elif trade_velocity > 50.0:
             score += 10
             reasons.append(f"Strong trade velocity: {trade_velocity:.1f} tpm (+10)")
