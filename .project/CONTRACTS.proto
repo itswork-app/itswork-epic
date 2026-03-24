@@ -19,6 +19,11 @@ message TokenRequest {
   bool has_socials = 8;
   float bonding_progress = 9;
   float trade_velocity = 10;
+  bool has_golden_wallets = 12;
+  repeated string golden_wallets = 13;
+  string creator_reputation = 14;
+  int32 failed_projects_count = 15;
+  string insider_risk = 16;
 }
 
 message VerdictResponse { 
