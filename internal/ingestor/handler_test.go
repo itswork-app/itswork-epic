@@ -105,7 +105,7 @@ func TestTokenAnalysisHandler_PaidSuccess(t *testing.T) {
 
 	// PR-NEXUS-INTELLIGENCE: With Redis nil, CheckAndIncrFreeUsage returns (true, nil) = fail-open
 	// PR-NEXUS-AUTH-JOURNEY: Teaser check happens FIRST.
-	
+
 	// 1. GetAnalysis (teaser=false, but check still happens)
 	mock.ExpectQuery(`(?s)SELECT.*FROM.*token_analysis.*WHERE.*mint_address = \$1`).
 		WithArgs("mint123").
@@ -531,7 +531,7 @@ func TestTokenAnalysisHandler_Teaser(t *testing.T) {
 			AddRow("BULLISH", 85, "good", "TRUSTED", "LOW"))
 
 	// 2. CheckAndIncrFreeUsage / InitUserCredits (happens if NOT teaser or for logging)
-	// In the handler, if teaser=true, we skip CheckAccess, but we still might call InitUserCredits 
+	// In the handler, if teaser=true, we skip CheckAccess, but we still might call InitUserCredits
 	// based on the context. Let's look at the handler logic again.
 	mock.ExpectExec("INSERT INTO user_credits").WillReturnResult(sqlmock.NewResult(1, 1))
 
