@@ -441,7 +441,7 @@ func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, pl
 	} else if err == nil {
 		// EXISTING SUBSCRIPTION
 		if newTier > oldTier && oldExpiry.After(now) {
-			// UPGRADE: Carry over unused quota
+			// UPGRADE: Carry over unused quota (PR-NEXUS-REPUTATION Ascension)
 			leftover := oldLimit - oldUsage
 			if leftover < 0 {
 				leftover = 0

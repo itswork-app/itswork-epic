@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	pubsub "cloud.google.com/go/pubsub/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/option"
 
@@ -18,6 +19,9 @@ type mockBrainger struct {
 		ctx context.Context, mint, creator string, walletAge int32,
 		isLpBurned bool, concentration float32, fundingPassed bool,
 		isRenounced bool, hasSocials bool,
+		bondingProgress, tradeVelocity float32,
+		hasGoldens bool, goldens []string,
+		reputation string, failedCount int32, insiderRisk string,
 	) (*proto.VerdictResponse, error)
 }
 
@@ -25,9 +29,16 @@ func (m *mockBrainger) AnalyzeToken(
 	ctx context.Context, mint, creator string, walletAge int32,
 	isLpBurned bool, concentration float32, fundingPassed bool,
 	isRenounced bool, hasSocials bool,
+	bondingProgress, tradeVelocity float32,
+	hasGoldens bool, goldens []string,
+	reputation string, failedCount int32, insiderRisk string,
 ) (*proto.VerdictResponse, error) {
 	if m.AnalyzeTokenFunc != nil {
-		return m.AnalyzeTokenFunc(ctx, mint, creator, walletAge, isLpBurned, concentration, fundingPassed, isRenounced, hasSocials)
+		return m.AnalyzeTokenFunc(
+			ctx, mint, creator, walletAge, isLpBurned, concentration, fundingPassed,
+			isRenounced, hasSocials, bondingProgress, tradeVelocity,
+			hasGoldens, goldens, reputation, failedCount, insiderRisk,
+		)
 	}
 	if m.err != nil {
 		return nil, m.err
@@ -37,6 +48,10 @@ func (m *mockBrainger) AnalyzeToken(
 
 type mockRepo struct {
 	err error
+}
+
+func (m *mockRepo) GetRedis() *redis.Client {
+	return nil
 }
 
 func (m *mockRepo) SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error {
@@ -165,7 +180,8 @@ func TestInitSubscriber_MockSuccess(t *testing.T) {
 		return nil, nil // Return nil client to avoid real connection checks
 	}
 
-	s, err := InitSubscriber(nil, nil)
+	repo := &mockRepo{}
+	s, err := InitSubscriber(nil, repo)
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 	s.Shutdown()
@@ -177,7 +193,8 @@ func TestInitSubscriber_WithClient(t *testing.T) {
 	newPubsubClient = func(ctx context.Context, projectID string, opts ...option.ClientOption) (*pubsub.Client, error) {
 		return pubsub.NewClient(ctx, "test-p", option.WithoutAuthentication(), option.WithEndpoint("localhost:8085"))
 	}
-	s, err := InitSubscriber(nil, nil)
+	repo := &mockRepo{}
+	s, err := InitSubscriber(nil, repo)
 	assert.NoError(t, err)
 	assert.NotNil(t, s)
 	s.Shutdown()

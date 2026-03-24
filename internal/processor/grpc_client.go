@@ -43,6 +43,9 @@ func (bc *BrainClient) AnalyzeToken(
 	ctx context.Context, mint, creator string, walletAge int32,
 	isLpBurned bool, concentration float32, fundingPassed bool,
 	isRenounced bool, hasSocials bool,
+	bondingProgress, tradeVelocity float32,
+	hasGoldens bool, goldens []string,
+	reputation string, failedCount int32, insiderRisk string,
 ) (*proto.VerdictResponse, error) {
 	if bc.client == nil {
 		return nil, errors.New("gRPC client not initialized")
@@ -56,6 +59,13 @@ func (bc *BrainClient) AnalyzeToken(
 		FundingSourceCheckPassed:         fundingPassed,
 		IsRenounced:                      isRenounced,
 		HasSocials:                       hasSocials,
+		BondingProgress:                  bondingProgress,
+		TradeVelocity:                    tradeVelocity,
+		HasGoldenWallets:                 hasGoldens,
+		GoldenWallets:                    goldens,
+		CreatorReputation:                reputation,
+		FailedProjectsCount:              failedCount,
+		InsiderRisk:                      insiderRisk,
 	}
 
 	// High Performance: Calling async Brain via standard gRPC call

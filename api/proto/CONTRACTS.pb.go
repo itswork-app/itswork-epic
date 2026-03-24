@@ -33,6 +33,11 @@ type TokenRequest struct {
 	HasSocials                       bool                   `protobuf:"varint,8,opt,name=has_socials,json=hasSocials,proto3" json:"has_socials,omitempty"`
 	BondingProgress                  float32                `protobuf:"fixed32,9,opt,name=bonding_progress,json=bondingProgress,proto3" json:"bonding_progress,omitempty"`
 	TradeVelocity                    float32                `protobuf:"fixed32,10,opt,name=trade_velocity,json=tradeVelocity,proto3" json:"trade_velocity,omitempty"`
+	HasGoldenWallets                 bool                   `protobuf:"varint,12,opt,name=has_golden_wallets,json=hasGoldenWallets,proto3" json:"has_golden_wallets,omitempty"`
+	GoldenWallets                    []string               `protobuf:"bytes,13,rep,name=golden_wallets,json=goldenWallets,proto3" json:"golden_wallets,omitempty"`
+	CreatorReputation                string                 `protobuf:"bytes,14,opt,name=creator_reputation,json=creatorReputation,proto3" json:"creator_reputation,omitempty"`
+	FailedProjectsCount              int32                  `protobuf:"varint,15,opt,name=failed_projects_count,json=failedProjectsCount,proto3" json:"failed_projects_count,omitempty"`
+	InsiderRisk                      string                 `protobuf:"bytes,16,opt,name=insider_risk,json=insiderRisk,proto3" json:"insider_risk,omitempty"`
 	unknownFields                    protoimpl.UnknownFields
 	sizeCache                        protoimpl.SizeCache
 }
@@ -137,6 +142,41 @@ func (x *TokenRequest) GetTradeVelocity() float32 {
 	return 0
 }
 
+func (x *TokenRequest) GetHasGoldenWallets() bool {
+	if x != nil {
+		return x.HasGoldenWallets
+	}
+	return false
+}
+
+func (x *TokenRequest) GetGoldenWallets() []string {
+	if x != nil {
+		return x.GoldenWallets
+	}
+	return nil
+}
+
+func (x *TokenRequest) GetCreatorReputation() string {
+	if x != nil {
+		return x.CreatorReputation
+	}
+	return ""
+}
+
+func (x *TokenRequest) GetFailedProjectsCount() int32 {
+	if x != nil {
+		return x.FailedProjectsCount
+	}
+	return 0
+}
+
+func (x *TokenRequest) GetInsiderRisk() string {
+	if x != nil {
+		return x.InsiderRisk
+	}
+	return ""
+}
+
 type VerdictResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Score         int32                  `protobuf:"varint,1,opt,name=score,proto3" json:"score,omitempty"`
@@ -201,7 +241,7 @@ var File_api_proto_CONTRACTS_proto protoreflect.FileDescriptor
 
 const file_api_proto_CONTRACTS_proto_rawDesc = "" +
 	"\n" +
-	"\x19api/proto/CONTRACTS.proto\x12\x14itswork.intelligence\"\xd8\x03\n" +
+	"\x19api/proto/CONTRACTS.proto\x12\x14itswork.intelligence\"\xb3\x05\n" +
 	"\fTokenRequest\x12!\n" +
 	"\fmint_address\x18\x01 \x01(\tR\vmintAddress\x12'\n" +
 	"\x0fcreator_address\x18\x02 \x01(\tR\x0ecreatorAddress\x127\n" +
@@ -215,7 +255,12 @@ const file_api_proto_CONTRACTS_proto_rawDesc = "" +
 	"hasSocials\x12)\n" +
 	"\x10bonding_progress\x18\t \x01(\x02R\x0fbondingProgress\x12%\n" +
 	"\x0etrade_velocity\x18\n" +
-	" \x01(\x02R\rtradeVelocity\"Y\n" +
+	" \x01(\x02R\rtradeVelocity\x12,\n" +
+	"\x12has_golden_wallets\x18\f \x01(\bR\x10hasGoldenWallets\x12%\n" +
+	"\x0egolden_wallets\x18\r \x03(\tR\rgoldenWallets\x12-\n" +
+	"\x12creator_reputation\x18\x0e \x01(\tR\x11creatorReputation\x122\n" +
+	"\x15failed_projects_count\x18\x0f \x01(\x05R\x13failedProjectsCount\x12!\n" +
+	"\finsider_risk\x18\x10 \x01(\tR\vinsiderRisk\"Y\n" +
 	"\x0fVerdictResponse\x12\x14\n" +
 	"\x05score\x18\x01 \x01(\x05R\x05score\x12\x18\n" +
 	"\averdict\x18\x02 \x01(\tR\averdict\x12\x16\n" +

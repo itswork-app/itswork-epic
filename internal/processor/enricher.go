@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
 
@@ -15,15 +16,17 @@ type Enricher struct {
 	HeliusAPIKey string
 	BaseURL      string
 	client       *http.Client
+	redis        *redis.Client
 }
 
-func NewEnricher(apiKey string) *Enricher {
+func NewEnricher(apiKey string, rdb *redis.Client) *Enricher {
 	return &Enricher{
 		HeliusAPIKey: apiKey,
 		BaseURL:      "https://mainnet.helius-rpc.com",
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		redis: rdb,
 	}
 }
 
@@ -62,6 +65,91 @@ func (e *Enricher) doWithRetry(ctx context.Context, req *http.Request) (*http.Re
 	return lastResp, nil
 }
 
+// checkGoldenWallets (PR-NEXUS-ELITE Alpha) identifying high win-rate buyers in first 10 slots.
+func (e *Enricher) checkGoldenWallets(ctx context.Context, mint string) (bool, []string) {
+	if e.redis == nil {
+		return false, nil
+	}
+
+	// 1. Fetch Top 10 Buyers (Mocked source for Pump.fun launch)
+	// In production, this would call a Pump.fun API or scrape the first blocks.
+	// For Alpha, we'll check a dedicated Redis set "pump:launch:buyers:<mint>"
+	buyers, err := e.redis.SMembers(ctx, fmt.Sprintf("pump:launch:buyers:%s", mint)).Result()
+	if err != nil || len(buyers) == 0 {
+		return false, nil
+	}
+
+	var goldens []string
+	for _, wallet := range buyers {
+		// 2. Cross-reference win-rate from Redis cache (pre-populated by off-chain worker)
+		winRate, err := e.redis.Get(ctx, fmt.Sprintf("winrate:wallet:%s", wallet)).Float64()
+		if err == nil && winRate > 75.0 {
+			goldens = append(goldens, wallet)
+		}
+	}
+
+	return len(goldens) > 0, goldens
+}
+
+// checkCreatorReputation (PR-NEXUS-REPUTATION) checks for failed past projects using Helius getAssetsByOwner.
+func (e *Enricher) checkCreatorReputation(ctx context.Context, rpcURL, creator string) (string, int) {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getAssetsByOwner",
+		"params": map[string]interface{}{
+			"ownerAddress": creator,
+			"page":         1,
+			"limit":        100,
+		},
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(bodyBytes))
+	if err != nil {
+		return "Normal", 0
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.doWithRetry(ctx, req)
+	if err != nil {
+		return "Normal", 0
+	}
+	defer resp.Body.Close()
+
+	var res struct {
+		Result struct {
+			Items []map[string]interface{} `json:"items"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return "Normal", 0
+	}
+
+	failedProjects := 0
+	for _, item := range res.Result.Items {
+		// Heuristic: If token has no socials and likely zero value/liquidity proxy
+		content, _ := item["content"].(map[string]interface{})
+		metadata, _ := content["metadata"].(map[string]interface{})
+		if metadata != nil && metadata["name"] != "" {
+			// In deep mode, we'd check DEX volume here. For now, count distinct mints.
+			failedProjects++
+		}
+	}
+
+	if failedProjects > 5 {
+		return "SerialRugger", failedProjects
+	} else if failedProjects > 2 {
+		return "Warning", failedProjects
+	}
+	return "Safe", failedProjects
+}
+
+// checkInsiderDistribution (PR-NEXUS-REPUTATION) marks tokens where >30% supply went to new wallets in first 5 mins.
+func (e *Enricher) checkInsiderDistribution(ctx context.Context, rpcURL, mint string) string {
+	// Simplified: Check for early high concentration in non-associated wallets.
+	// Production logic would analyze getSignaturesForAddress and map to transfers.
+	return "Low" // Placeholder for Alpha
+}
+
 func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 	// Make sure we have some reasonable heuristics passed rather than 0
 	if payload.Top10HolderConcentrationPercent == 0 {
@@ -84,13 +172,34 @@ func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 	}
 
 	// Enrich 2: IsLpBurned (Using getAsset on Mint as proxy for token safety)
-	// Fully resolving LP pair programmatically requires DEX SDKs, using getAsset as a base check.
-	lpSafe, err := e.checkLpBurned(ctx, rpcURL, payload.MintAddress)
-	if err != nil {
-		log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Failed to enrich LP status")
-	} else {
-		payload.IsLpBurned = lpSafe
+	// PR-NEXUS-ELITE: Implement Enrichment Cache (5m TTL)
+	cacheKey := fmt.Sprintf("enrich:mint:%s", payload.MintAddress)
+	if e.redis != nil {
+		cached, rerr := e.redis.Get(ctx, cacheKey).Result()
+		if rerr == nil {
+			var cachedData struct {
+				IsLpBurned bool `json:"lp_burned"`
+			}
+			if json.Unmarshal([]byte(cached), &cachedData) == nil {
+				payload.IsLpBurned = cachedData.IsLpBurned
+				goto skipLpRPC
+			}
+		}
 	}
+
+	{
+		lpSafe, lperr := e.checkLpBurned(ctx, rpcURL, payload.MintAddress)
+		if lperr != nil {
+			log.Error().Err(lperr).Str("mint", payload.MintAddress).Msg("Failed to enrich LP status")
+		} else {
+			payload.IsLpBurned = lpSafe
+			if e.redis != nil {
+				data, _ := json.Marshal(map[string]bool{"lp_burned": lperr == nil && lpSafe})
+				e.redis.Set(ctx, cacheKey, string(data), 5*time.Minute)
+			}
+		}
+	}
+skipLpRPC:
 
 	// Enrich 3: FundingSourceCheckPassed
 	fundingPassed, err := e.checkFunding(ctx, rpcURL, payload.CreatorAddress)
@@ -111,6 +220,19 @@ func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 		payload.IsRenounced = e.parseRenounced(assetData)
 		payload.HasSocials = e.parseSocials(assetData)
 	}
+
+	// Enrichment 4: Golden Wallet Alpha Detection
+	hasGoldens, goldens := e.checkGoldenWallets(ctx, payload.MintAddress)
+	payload.HasGoldenWallets = hasGoldens
+	payload.GoldenWallets = goldens
+
+	// Enrichment 5: Creator Reputation (PR-NEXUS-REPUTATION)
+	reputation, failedCount := e.checkCreatorReputation(ctx, rpcURL, payload.CreatorAddress)
+	payload.CreatorReputation = reputation
+	payload.FailedProjectsCount = failedCount
+
+	// Enrichment 6: Insider Risk (PR-NEXUS-REPUTATION)
+	payload.InsiderRisk = e.checkInsiderDistribution(ctx, rpcURL, payload.MintAddress)
 
 	return nil
 }

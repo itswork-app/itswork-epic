@@ -24,6 +24,14 @@ func NewTokenRepository(db *sql.DB, rdb *redis.Client) *TokenRepository {
 	return &TokenRepository{db: db, redis: rdb}
 }
 
+func (r *TokenRepository) GetDB() *sql.DB {
+	return r.db
+}
+
+func (r *TokenRepository) GetRedis() *redis.Client {
+	return r.redis
+}
+
 // SaveAnalysis persists the AI verdict for a token using a nested transaction (Wallets + TokenAnalysis)
 func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdict, reason string, score int) error {
 	tx, err := r.db.BeginTx(ctx, nil)

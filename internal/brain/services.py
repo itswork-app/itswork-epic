@@ -41,6 +41,11 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         has_socials = request.has_socials
         bonding_progress = request.bonding_progress
         trade_velocity = request.trade_velocity
+        has_golden_wallets = request.has_golden_wallets
+        golden_wallets = request.golden_wallets
+        creator_reputation = request.creator_reputation
+        failed_count = request.failed_projects_count
+        insider_risk = request.insider_risk
 
         # Base score
         score = 100
@@ -96,6 +101,29 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         elif trade_velocity > 10.0:
             score += 5
             reasons.append(f"Organic trade activity: {trade_velocity:.1f} tpm (+5)")
+
+        # 9. Golden Wallet Alpha (Elite Signal)
+        if has_golden_wallets:
+            score += 30
+            goldens_str = ", ".join(golden_wallets[:3])  # Show top 3
+            msg = f"ELITE SIGNAL: {len(golden_wallets)} high win-rate buyers detected ({goldens_str}...) (+30)"
+            reasons.append(msg)
+
+        # 10. Creator Reputation (PR-NEXUS-REPUTATION)
+        if creator_reputation == "SerialRugger":
+            score -= 60
+            reasons.append(f"SERIAL RUGGER DETECTED: {failed_count} failed previous projects (-60)")
+        elif creator_reputation == "Warning":
+            score -= 20
+            reasons.append(f"Reputation Warning: {failed_count} dead tokens from this creator (-20)")
+        elif creator_reputation == "Safe":
+            score += 10
+            reasons.append("Clean Creator History (Safe Reputation) (+10)")
+
+        # 11. Insider Risk (PR-NEXUS-REPUTATION)
+        if insider_risk == "High":
+            score -= 40
+            reasons.append("HIGH INSIDER RISK: Early supply concentration detected (-40)")
         # Determine Verdict
         if score >= 80:
             verdict = "SAFE"

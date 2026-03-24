@@ -107,14 +107,16 @@ func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber,
 
 	// Minimalist High-Speed JSON Output for Bots (Merging fields for maximum utility)
 	c.JSON(http.StatusOK, gin.H{
-		"mint":             state.Mint,
-		"score":            state.Score,
-		"verdict":          state.Verdict,
-		"bonding_progress": state.LastProgress,
-		"velocity_rank":    state.VelocityRank,
-		"trade_velocity":   state.TradesPerMin,
-		"dev_sniped":       state.DevSniped,
-		"is_momentum":      state.IsHighMomentum,
+		"mint":               state.Mint,
+		"score":              state.Score,
+		"verdict":            state.Verdict,
+		"bonding_progress":   state.LastProgress,
+		"velocity_rank":      state.VelocityRank,
+		"trade_velocity":     state.TradesPerMin,
+		"dev_sniped":         state.DevSniped,
+		"is_momentum":        state.IsHighMomentum,
+		"creator_reputation": state.CreatorReputation,
+		"insider_risk":       state.InsiderRisk,
 	})
 }
 

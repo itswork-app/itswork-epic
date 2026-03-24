@@ -49,7 +49,9 @@ func TestBrainClient_AnalyzeToken_Success(t *testing.T) {
 		defer client.Close()
 	}
 
-	resp, err := client.AnalyzeToken(context.Background(), "mint123", "creator123", 100, true, 20.5, true, true, true)
+	resp, err := client.AnalyzeToken(
+		context.Background(), "mint123", "creator123", 100, true, 20.5, true, true, true, 0, 0, false, nil, "Safe", 0, "Low",
+	)
 	assert.NoError(t, err)
 	assert.Equal(t, int32(80), resp.Score)
 	assert.Equal(t, "SUSPICIOUS", resp.Verdict)
@@ -57,7 +59,9 @@ func TestBrainClient_AnalyzeToken_Success(t *testing.T) {
 
 func TestBrainClient_AnalyzeToken_NilClient(t *testing.T) {
 	bc := &BrainClient{client: nil}
-	_, err := bc.AnalyzeToken(context.Background(), "mint123", "creator123", 100, true, 20.5, true, true, true)
+	_, err := bc.AnalyzeToken(
+		context.Background(), "mint123", "creator123", 100, true, 20.5, true, true, true, 0, 0, false, nil, "Safe", 0, "Low",
+	)
 	assert.Error(t, err)
 }
 
@@ -85,7 +89,9 @@ func TestBrainClient_AnalyzeToken_Error(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	_, err = client.AnalyzeToken(context.Background(), "mint123", "creator123", 100, true, 20.5, true, true, true)
+	_, err = client.AnalyzeToken(
+		context.Background(), "mint123", "creator123", 100, true, 20.5, true, true, true, 0, 0, false, nil, "Safe", 0, "Low",
+	)
 	assert.Error(t, err)
 }
 
