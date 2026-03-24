@@ -347,8 +347,7 @@ func TestTokenAnalysisHandler_TeaserMode(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).
 			AddRow("SAFE", 85, "Reason", "TRUSTED", "NORMAL"))
 
-	// 2. Lazy-init (happens after DB hit)
-	mock.ExpectExec("INSERT INTO user_credits").WithArgs("guest_teaser").WillReturnResult(sqlmock.NewResult(1, 1))
+	// 2. Lazy-init (NOT called for guest_teaser in production to save DB hits)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -563,4 +562,24 @@ func TestSetupRouter_Comprehensive(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/health", nil)
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+func TestGetQuotaHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, mock, _ := sqlmock.New()
+	defer db.Close()
+
+	payRepo := repository.NewPaymentRepository(db, nil)
+
+	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user_quota").WillReturnResult(sqlmock.NewResult(1, 1))
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest(http.MethodGet, "/api/v1/user/quota", nil)
+	c.Set("userID", "user_quota")
+	c.Set("authMethod", "clerk_jwt")
+
+	GetQuotaHandler(c, payRepo)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "free_ui")
 }
