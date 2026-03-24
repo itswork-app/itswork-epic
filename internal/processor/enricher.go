@@ -250,7 +250,7 @@ func (e *Enricher) checkLpBurned(ctx context.Context, rpcURL, mint string) (bool
 var KnownExchanges = map[string]string{
 	"5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9": "Binance",
 	"GJRs4FwHtemZ5ZE9x3FNvJ8TMwitKTh21yxdRPqn7npE": "Coinbase",
-	"is6MTRHEgyFLNTfYcuV4QBWLjrZBfmhVNYR6ccgr8KV": "OKX",
+	"is6MTRHEgyFLNTfYcuV4QBWLjrZBfmhVNYR6ccgr8KV":  "OKX",
 }
 
 func (e *Enricher) checkFunding(ctx context.Context, rpcURL, address string) (bool, error) {
@@ -283,7 +283,8 @@ func (e *Enricher) checkFunding(ctx context.Context, rpcURL, address string) (bo
 			Signature string `json:"signature"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&sigRes); err != nil {
+	err = json.NewDecoder(resp.Body).Decode(&sigRes)
+	if err != nil {
 		return true, err
 	}
 
@@ -331,11 +332,12 @@ func (e *Enricher) checkFunding(ctx context.Context, rpcURL, address string) (bo
 		} `json:"result"`
 	}
 
-	if err := json.NewDecoder(txResp.Body).Decode(&txRes); err != nil {
+	err = json.NewDecoder(txResp.Body).Decode(&txRes)
+	if err != nil {
 		return true, err
 	}
 
-	// The first signer is typicaly the funder for a SOL transfer
+	// The first signer is typically the funder for a SOL transfer
 	var firstSigner string
 	for _, acc := range txRes.Result.Transaction.Message.AccountKeys {
 		if acc.Signer {

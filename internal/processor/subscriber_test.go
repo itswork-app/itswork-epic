@@ -13,7 +13,7 @@ import (
 )
 
 type mockBrainger struct {
-	err error
+	err              error
 	AnalyzeTokenFunc func(
 		ctx context.Context, mint, creator string, walletAge int32,
 		isLpBurned bool, concentration float32, fundingPassed bool,
