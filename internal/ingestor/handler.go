@@ -40,6 +40,24 @@ func SetupRouter(
 	// OpenTelemetry Middleware (Distributed Tracing)
 	r.Use(otelgin.Middleware("itswork-ingestor"))
 
+	// CORS Middleware (PR-WIRE-REPAIR)
+	r.Use(func(c *gin.Context) {
+		corsHeaders := "Content-Type, Content-Length, Accept-Encoding, " +
+			"X-CSRF-Token, Authorization, accept, origin, " +
+			"Cache-Control, X-Requested-With, X-API-KEY"
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", corsHeaders)
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
+
 	r.POST("/webhook/helius", func(c *gin.Context) {
 		HeliusWebhookHandler(c, pub)
 	})
@@ -70,6 +88,10 @@ func SetupRouter(
 
 		api.POST("/user/role", func(c *gin.Context) {
 			SaveUserRoleHandler(c, authRepo)
+		})
+
+		api.POST("/auth/sync", func(c *gin.Context) {
+			AuthSyncHandler(c, authRepo)
 		})
 
 		// DEVELOPER PORTAL: API-only endpoint (X-API-KEY)
@@ -313,4 +335,20 @@ func SaveUserRoleHandler(c *gin.Context, authRepo *repository.AuthRepository) {
 	}()
 
 	c.JSON(http.StatusOK, gin.H{"status": "success", "role": input.Role})
+}
+
+// AuthSyncHandler ensures the user exists in our local DB (PR-WIRE-REPAIR).
+func AuthSyncHandler(c *gin.Context, authRepo *repository.AuthRepository) {
+	userID := GetUserID(c)
+	if userID == "" || userID == "guest_teaser" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	if err := authRepo.SyncUser(c.Request.Context(), userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to sync user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "User Synced Successfully"})
 }
