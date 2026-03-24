@@ -54,6 +54,14 @@ func NewPaymentRepository(db *sql.DB, rdb *redis.Client) *PaymentRepository {
 	return &PaymentRepository{db: db, redis: rdb}
 }
 
+func (r *PaymentRepository) GetDB() *sql.DB {
+	return r.db
+}
+
+func (r *PaymentRepository) GetRedis() *redis.Client {
+	return r.redis
+}
+
 // SavePayment initializes a payment record in Pending state
 func (r *PaymentRepository) SavePayment(ctx context.Context, p *Payment) error {
 	query := `
@@ -98,17 +106,17 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 				sentry.CaptureException(err)
 			}
 		} else if mint == "SUB_MONTHLY_PRO" {
-			if err := r.ActivateSubscription(ctx, userID, "active", 30, QuotaProMonthly); err != nil {
+			if err := r.ActivateSubscription(ctx, userID, "SUB_MONTHLY_PRO", 30, QuotaProMonthly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Monthly")
 				sentry.CaptureException(err)
 			}
 		} else if mint == "SUB_WEEKLY_PRO" {
-			if err := r.ActivateSubscription(ctx, userID, "active", 7, QuotaProWeekly); err != nil {
+			if err := r.ActivateSubscription(ctx, userID, "SUB_WEEKLY_PRO", 7, QuotaProWeekly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Weekly")
 				sentry.CaptureException(err)
 			}
 		} else if mint == "SUB_ULTRA_PRO" {
-			if err := r.ActivateSubscription(ctx, userID, "active", 30, QuotaUltraMonthly); err != nil {
+			if err := r.ActivateSubscription(ctx, userID, "SUB_ULTRA_PRO", 30, QuotaUltraMonthly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Ultra")
 				sentry.CaptureException(err)
 			}
@@ -371,39 +379,130 @@ func (r *PaymentRepository) AddUserCredits(ctx context.Context, userID string, a
 	return err
 }
 
-// ActivateSubscription activates or extends a user subscription with quota
-func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, status string, durationDays, quota int) error {
+const (
+	TierWeeklyPro  = 1
+	TierMonthlyPro = 2
+	TierUltraPro   = 3
+	TierEnterprise = 4
+)
+
+func getTier(plan string) int {
+	switch plan {
+	case "SUB_WEEKLY_PRO":
+		return TierWeeklyPro
+	case "SUB_MONTHLY_PRO":
+		return TierMonthlyPro
+	case "SUB_ULTRA_PRO":
+		return TierUltraPro
+	case "SUB_ENTERPRISE":
+		return TierEnterprise
+	default:
+		return 0
+	}
+}
+
+// ActivateSubscription activates or extends a user subscription with quota.
+// PR-SUBSCRIPTION-PRESTIGE: Implements Smart Upgrade (Carry-over) and Queued Downgrade.
+func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, planType string, durationDays, quota int) error {
 	if durationDays <= 0 {
 		log.Error().Str("user", userID).Int("duration", durationDays).Msg("Invalid subscription duration")
 		sentry.CaptureMessage(fmt.Sprintf("Invalid subscription duration for user %s: %d", userID, durationDays))
 		return fmt.Errorf("invalid subscription duration: %d", durationDays)
 	}
 
-	query := `
-		INSERT INTO user_subscriptions (user_id, status, expires_at, quota_limit, current_usage)
-		VALUES ($1, $2, now() + interval '1 day' * $3, $4, 0)
-		ON CONFLICT (user_id) DO UPDATE
-		SET status = $2, 
-			quota_limit = $4,
-			current_usage = 0,
-			expires_at = CASE 
-				WHEN user_subscriptions.expires_at > now() THEN user_subscriptions.expires_at + interval '1 day' * $3
-				ELSE now() + interval '1 day' * $3
-			END, 
-			updated_at = now()
-	`
-	_, err := r.db.ExecContext(ctx, query, userID, status, durationDays, quota)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		log.Error().Err(err).Str("user", userID).Msg("Failed to activate subscription")
+		return err
+	}
+	defer tx.Rollback()
+
+	// 1. Fetch current subscription to detect transition type
+	var oldPlan, oldStatus string
+	var oldTier, oldLimit, oldUsage int
+	var oldExpiry time.Time
+	queryFetch := `
+		SELECT plan_type, COALESCE(plan_tier, '0')::INT, status, quota_limit, current_usage, expires_at 
+		FROM user_subscriptions 
+		WHERE user_id = $1
+	`
+	row := tx.QueryRowContext(ctx, queryFetch, userID)
+	err = row.Scan(&oldPlan, &oldTier, &oldStatus, &oldLimit, &oldUsage, &oldExpiry)
+
+	newTier := getTier(planType)
+	now := time.Now()
+
+	if err == sql.ErrNoRows {
+		// NEW SUBSCRIPTION
+		queryInsert := `
+			INSERT INTO user_subscriptions (user_id, plan_type, plan_tier, status, expires_at, quota_limit, current_usage)
+			VALUES ($1, $2, $3, 'active', now() + interval '1 day' * $4, $5, 0)
+		`
+		_, err = tx.ExecContext(ctx, queryInsert, userID, planType, newTier, durationDays, quota)
+	} else if err == nil {
+		// EXISTING SUBSCRIPTION
+		if newTier > oldTier && oldExpiry.After(now) {
+			// UPGRADE: Carry over unused quota
+			leftover := oldLimit - oldUsage
+			if leftover < 0 {
+				leftover = 0
+			}
+			queryUpgrade := `
+				UPDATE user_subscriptions 
+				SET plan_type = $1, 
+				    plan_tier = $2, 
+				    status = 'active', 
+				    expires_at = now() + interval '1 day' * $3, 
+				    quota_limit = $4 + $5, 
+				    carry_over_quota = $5,
+				    current_usage = 0,
+				    updated_at = now()
+				WHERE user_id = $6
+			`
+			_, err = tx.ExecContext(ctx, queryUpgrade, planType, newTier, durationDays, quota, leftover, userID)
+		} else if newTier < oldTier && oldExpiry.After(now) {
+			// QUEUED DOWNGRADE: Store in pending_plan
+			queryDowngrade := `
+				UPDATE user_subscriptions 
+				SET pending_plan = $1, updated_at = now()
+				WHERE user_id = $2
+			`
+			_, err = tx.ExecContext(ctx, queryDowngrade, planType, userID)
+		} else {
+			// RENEWAL or EXTENSION (Same tier or old plan expired)
+			queryRenew := `
+				UPDATE user_subscriptions 
+				SET plan_type = $1, 
+				    plan_tier = $2, 
+				    status = 'active', 
+				    expires_at = CASE 
+						WHEN expires_at > now() THEN expires_at + interval '1 day' * $3
+						ELSE now() + interval '1 day' * $3
+					END,
+				    quota_limit = $4,
+				    current_usage = 0, -- Reset usage for new period
+				    updated_at = now()
+				WHERE user_id = $5
+			`
+			_, err = tx.ExecContext(ctx, queryRenew, planType, newTier, durationDays, quota, userID)
+		}
+	}
+
+	if err != nil {
+		log.Error().Err(err).Str("user", userID).Msg("Failed to update subscription in DB")
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 
 	// Reset Redis usage counter on activation/renewal
 	if r.redis != nil {
-		usageKey := fmt.Sprintf("usage:user:%s", userID) // simplified period for now as per instructions
+		usageKey := fmt.Sprintf("usage:user:%s", userID)
 		r.redis.Del(ctx, usageKey)
 	}
 
-	return err
+	return nil
 }
 
 // IncrementUsage increments the Redis usage counter for a user

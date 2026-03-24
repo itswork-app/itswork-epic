@@ -172,18 +172,41 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 	}
 
 	if !granted {
+		// PR-SUBSCRIPTION-PRESTIGE: EMERGENCY BRIDGE
+		// If subscription is exhausted, check if user has a successful SINGLE_PAY for this mint.
 		if isAPI {
 			c.JSON(http.StatusForbidden, gin.H{
-				"error":  "Access Denied",
-				"reason": "Developer API access requires an active Pro/Ultra/Enterprise subscription and available quota.",
+				"error":            "Access Denied",
+				"reason":           "Developer API access requires an active Pro/Ultra/Enterprise subscription and available quota.",
+				"remaining":        0,
+				"suggested_action": "upgrade",
+				"upgrade_url":      "https://itswork.app/developer/billing",
 			})
 		} else {
-			c.JSON(http.StatusPaymentRequired, gin.H{
-				"error":  "Insufficient Credits",
-				"reason": "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning.",
-			})
+			// Check for Single-Pay Bridge (UI Only)
+			var count int
+			query := `SELECT COUNT(*) FROM payments WHERE user_id = $1 AND mint_address = $2 AND status = 'success'`
+			_ = payRepo.GetDB().QueryRowContext(c.Request.Context(), query, userID, mint).Scan(&count)
+
+			if count > 0 {
+				log.Info().Str("user", userID).Str("mint", mint).Msg("Emergency Bridge: Granting access via Single-Pay")
+				// Proceed with analysis branch... (Logic continues below)
+			} else {
+				c.JSON(http.StatusPaymentRequired, gin.H{
+					"error":            "Insufficient Credits",
+					"reason":           "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning.",
+					"remaining":        0,
+					"suggested_action": "buy_credits",
+					"topup_url":        "https://itswork.app/billing",
+				})
+				return
+			}
 		}
-		return
+		if !isAPI {
+			// Ensure we don't return early if count > 0
+		} else {
+			return
+		}
 	}
 
 	// Perform the actual work (AI Analysis)
