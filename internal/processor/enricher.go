@@ -150,7 +150,7 @@ func (e *Enricher) checkCreatorReputation(ctx context.Context, rpcURL, creator s
 		}
 	}
 
-	label := "UNKNOWN"
+	var label string
 	if failedProjects > 5 {
 		label = "SERIAL_RUGGER"
 	} else if failedProjects > 0 {

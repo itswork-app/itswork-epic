@@ -33,7 +33,10 @@ func (r *TokenRepository) GetRedis() *redis.Client {
 }
 
 // SaveAnalysis persists the AI verdict for a token using a nested transaction (Wallets + TokenAnalysis)
-func (r *TokenRepository) SaveAnalysis(ctx context.Context, mint, creator, verdict, reason, creatorRep, insiderRisk string, score int) error {
+func (r *TokenRepository) SaveAnalysis(
+	ctx context.Context, mint, creator, verdict, reason,
+	creatorRep, insiderRisk string, score int,
+) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

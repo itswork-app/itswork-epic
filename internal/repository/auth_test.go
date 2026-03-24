@@ -78,4 +78,13 @@ func TestAuthRepository(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Empty(t, userID)
 	})
+
+	t.Run("SaveAPIKey_Error", func(t *testing.T) {
+		mock.ExpectExec("INSERT INTO api_keys").
+			WithArgs("user2", "hash2", "test-label2").
+			WillReturnError(sql.ErrConnDone)
+
+		err := repo.SaveAPIKey(ctx, "user2", "hash2", "test-label2")
+		assert.Error(t, err)
+	})
 }

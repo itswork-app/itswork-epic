@@ -2,28 +2,29 @@ package pay
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+
+	"itswork.app/internal/repository"
 )
 
 func TestNewPayService_EnvVars(t *testing.T) {
 	os.Setenv("SCAN_PRICE_SOL", "0.05")
-	os.Setenv("BUNDLE_50_PRICE_SOL", "0.5")
-	os.Setenv("BUNDLE_100_PRICE_SOL", "0.9")
+	os.Setenv("SCAN_PRICE_SOL", "0.05")
 	os.Setenv("SUB_PRO_PRICE_SOL", "0.3")
 	os.Setenv("PROJECT_WALLET_ADDRESS", "W1")
 
 	s := NewPayService(nil, nil, nil)
 	assert.Equal(t, "0.05", s.ScanPrice)
-	assert.Equal(t, "0.5", s.Bundle50Price)
-	assert.Equal(t, "0.9", s.Bundle100Price)
 	assert.Equal(t, "0.3", s.SubProPrice)
 	assert.Equal(t, "W1", s.ProjectWallet)
 }
@@ -286,4 +287,80 @@ func TestGetSolPriceUSD_RedisFallback(t *testing.T) {
 	s := NewPayService(rdb, nil, nil)
 	price := s.GetSolPriceUSD(context.Background())
 	assert.Equal(t, 123.45, price)
+}
+
+// --- Coverage Boost Tests ---
+
+func TestGenerateAPIKey_NotPro(t *testing.T) {
+	db, mock, _ := sqlmock.New()
+	defer db.Close()
+
+	payRepo := repository.NewPaymentRepository(db, nil)
+	authRepo := repository.NewAuthRepository(db, nil)
+
+	s := NewPayService(nil, payRepo, authRepo)
+
+	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+		WithArgs("user_not_pro").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+	key, err := s.GenerateAPIKey(context.Background(), "user_not_pro", "Test Key")
+	assert.Error(t, err)
+	assert.Equal(t, "", key)
+	assert.Contains(t, err.Error(), "reserved for Pro Subscribers")
+}
+
+func TestGenerateAPIKey_Success(t *testing.T) {
+	db, mock, _ := sqlmock.New()
+	defer db.Close()
+
+	payRepo := repository.NewPaymentRepository(db, nil)
+	authRepo := repository.NewAuthRepository(db, nil)
+
+	s := NewPayService(nil, payRepo, authRepo)
+
+	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+		WithArgs("user_pro").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	mock.ExpectExec("INSERT INTO api_keys").
+		WithArgs("user_pro", sqlmock.AnyArg(), "Test Key").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	key, err := s.GenerateAPIKey(context.Background(), "user_pro", "Test Key")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, key)
+	assert.Contains(t, key, "sk_user_")
+}
+
+func TestGenerateAPIKey_SaveError(t *testing.T) {
+	db, mock, _ := sqlmock.New()
+	defer db.Close()
+
+	payRepo := repository.NewPaymentRepository(db, nil)
+	authRepo := repository.NewAuthRepository(db, nil)
+
+	s := NewPayService(nil, payRepo, authRepo)
+
+	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+		WithArgs("user_err").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	mock.ExpectExec("INSERT INTO api_keys").
+		WithArgs("user_err", sqlmock.AnyArg(), "Test Key").
+		WillReturnError(sql.ErrConnDone)
+
+	key, err := s.GenerateAPIKey(context.Background(), "user_err", "Test Key")
+	assert.Error(t, err)
+	assert.Equal(t, "", key)
+}
+
+func TestNewPayService_Fallbacks(t *testing.T) {
+	os.Unsetenv("SCAN_PRICE_SOL")
+	os.Unsetenv("BUNDLE_50_PRICE_SOL")
+	os.Unsetenv("BUNDLE_100_PRICE_SOL")
+	os.Unsetenv("SUB_PRO_PRICE_SOL")
+
+	s := NewPayService(nil, nil, nil)
+	assert.Equal(t, "0.01", s.ScanPrice)
 }

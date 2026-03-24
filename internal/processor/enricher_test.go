@@ -235,3 +235,279 @@ func TestEnricher_CheckGoldenWallets(t *testing.T) {
 		assert.Nil(t, goldens)
 	})
 }
+
+// --- Coverage Boost Tests ---
+
+func TestDoWithRetry(t *testing.T) {
+	e := NewEnricher("test-key", nil)
+
+	t.Run("FailAllRetries", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://localhost:0", nil) // Port 0 will refuse connection
+		resp, err := e.doWithRetry(context.Background(), req)
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+	})
+
+	t.Run("ContextCanceled", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTooManyRequests)
+		}))
+		defer ts.Close()
+		e.BaseURL = ts.URL
+
+		req, _ := http.NewRequest("GET", ts.URL, nil)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		resp, err := e.doWithRetry(ctx, req)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "canceled")
+		assert.Nil(t, resp)
+	})
+}
+
+func TestEnricher_JSONParseErrors(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{invalid-json`))
+	}))
+	defer ts.Close()
+
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	e := NewEnricher("test-key", rdb)
+	ctx := context.Background()
+
+	age, err := e.fetchWalletAge(ctx, ts.URL, "creator_json_err")
+	assert.Error(t, err)
+	assert.Equal(t, int32(0), age)
+
+	// parseRenounced just takes an asset map
+	renounced := e.parseRenounced(nil)
+	assert.True(t, renounced) // Empty array = true
+}
+
+func TestEnricher_ParseRenounced(t *testing.T) {
+	e := NewEnricher("test-key", nil)
+
+	t.Run("FullyRenounced", func(t *testing.T) {
+		asset := map[string]interface{}{
+			"authorities": []interface{}{},
+		}
+		assert.True(t, e.parseRenounced(asset))
+	})
+
+	t.Run("NotRenounced_Mint", func(t *testing.T) {
+		asset := map[string]interface{}{
+			"authorities": []interface{}{
+				map[string]interface{}{
+					"scopes": []interface{}{"mint"},
+				},
+			},
+		}
+		assert.False(t, e.parseRenounced(asset))
+	})
+
+	t.Run("NotRenounced_Freeze", func(t *testing.T) {
+		asset := map[string]interface{}{
+			"authorities": []interface{}{
+				map[string]interface{}{
+					"scopes": []interface{}{"freeze"},
+				},
+			},
+		}
+		assert.False(t, e.parseRenounced(asset))
+	})
+
+	t.Run("BadFormat", func(t *testing.T) {
+		asset := map[string]interface{}{
+			"authorities": []interface{}{
+				"not-a-map",
+				map[string]interface{}{
+					"scopes": "not-a-slice",
+				},
+			},
+		}
+		assert.True(t, e.parseRenounced(asset)) // Skips bad formats, defaults true
+	})
+}
+
+func TestEnricher_ParseSocials(t *testing.T) {
+	e := NewEnricher("test-key", nil)
+
+	t.Run("HasSocials_LinksEmptyURI", func(t *testing.T) {
+		asset := map[string]interface{}{
+			"content": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"uri": "",
+				},
+				"links": map[string]interface{}{
+					"twitter": "https://twitter.com",
+				},
+			},
+		}
+		has := e.parseSocials(asset)
+		assert.False(t, has) // Fails early because URI is empty
+	})
+
+	t.Run("HasSocials_WithURI", func(t *testing.T) {
+		asset := map[string]interface{}{
+			"content": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"uri": "https://example.com/metadata.json",
+				},
+				"links": map[string]interface{}{
+					"twitter": "https://twitter.com",
+				},
+			},
+		}
+		has := e.parseSocials(asset)
+		assert.True(t, has)
+	})
+
+	t.Run("NoSocials", func(t *testing.T) {
+		asset := map[string]interface{}{
+			"content": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"uri": "https://example.com/metadata.json",
+				},
+			},
+		}
+		has := e.parseSocials(asset)
+		assert.False(t, has)
+	})
+}
+
+func TestEnricher_CheckLpBurned(t *testing.T) {
+	e := NewEnricher("test-key", nil)
+	ctx := context.Background()
+
+	t.Run("Burned", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{
+				"result": {
+					"ownership": {
+						"frozen": false,
+						"delegated": false
+					},
+					"authorities": []
+				}
+			}`))
+		}))
+		defer ts.Close()
+		e.BaseURL = ts.URL
+
+		burned, err := e.checkLpBurned(ctx, ts.URL, "mint1")
+		assert.NoError(t, err)
+		assert.True(t, burned)
+	})
+
+	t.Run("NotBurned", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{
+				"result": {
+					"ownership": {
+						"frozen": true,
+						"delegated": true
+					},
+					"authorities": [{"address":"someauth","scopes":["mint"]}]
+				}
+			}`))
+		}))
+		defer ts.Close()
+		e.BaseURL = ts.URL
+
+		burned, err := e.checkLpBurned(ctx, ts.URL, "mint2")
+		assert.NoError(t, err)
+		assert.False(t, burned)
+	})
+
+	t.Run("BadResp", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{notarray}`))
+		}))
+		defer ts.Close()
+		e.BaseURL = ts.URL
+
+		burned, err := e.checkLpBurned(ctx, ts.URL, "mint3")
+		assert.Error(t, err)
+		assert.False(t, burned)
+	})
+}
+
+func TestEnricher_CheckFunding(t *testing.T) {
+	e := NewEnricher("test-key", nil)
+	ctx := context.Background()
+
+	t.Run("FundedByExchange", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var req map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			method := req["method"].(string)
+
+			if method == "getSignaturesForAddress" {
+				_, _ = w.Write([]byte(`{
+					"jsonrpc": "2.0",
+					"result": [{"signature": "sig123"}],
+					"id": 1
+				}`))
+			} else if method == "getTransaction" {
+				_, _ = w.Write([]byte(`{
+					"jsonrpc": "2.0",
+					"result": {
+						"transaction": {
+							"message": {
+								"accountKeys": [
+									{"pubkey": "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9", "signer": true}
+								]
+							}
+						}
+					},
+					"id": 1
+				}`))
+			}
+		}))
+		defer ts.Close()
+
+		funded, err := e.checkFunding(ctx, ts.URL, "creator1")
+		assert.NoError(t, err)
+		assert.True(t, funded)
+	})
+
+	t.Run("NotFundedByExchange", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var req map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			method := req["method"].(string)
+
+			if method == "getSignaturesForAddress" {
+				_, _ = w.Write([]byte(`{
+					"jsonrpc": "2.0",
+					"result": [{"signature": "sig456"}],
+					"id": 1
+				}`))
+			} else if method == "getTransaction" {
+				_, _ = w.Write([]byte(`{
+					"jsonrpc": "2.0",
+					"result": {
+						"transaction": {
+							"message": {
+								"accountKeys": [
+									{"pubkey": "unknown_wallet", "signer": true}
+								]
+							}
+						}
+					},
+					"id": 1
+				}`))
+			}
+		}))
+		defer ts.Close()
+
+		funded, err := e.checkFunding(ctx, ts.URL, "creator2")
+		assert.NoError(t, err)
+		assert.False(t, funded)
+	})
+}

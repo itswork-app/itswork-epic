@@ -171,7 +171,11 @@ func (s *Subscriber) handleMessage(ctx context.Context, msg *pubsub.Message) {
 	}
 
 	// Persist Analysis result to Neon DB via Repository Layer
-	err = s.repo.SaveAnalysis(ctx, payload.MintAddress, payload.CreatorAddress, resp.Verdict, resp.Reason, resp.CreatorReputation, resp.InsiderRisk, int(resp.Score))
+	err = s.repo.SaveAnalysis(
+		ctx, payload.MintAddress, payload.CreatorAddress,
+		resp.Verdict, resp.Reason, resp.CreatorReputation,
+		resp.InsiderRisk, int(resp.Score),
+	)
 	if err != nil {
 		// Log error is handled in Repository, but we Decide Nack or Ack here
 		// Standard: Nack to allow retry if DB is temporarily unstable

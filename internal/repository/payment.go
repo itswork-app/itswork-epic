@@ -95,25 +95,17 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 
 	if status == "success" {
 		// 1. Fulfillment Logic
-		if mint == "BUNDLE_50" {
-			if err := r.AddUserCredits(ctx, userID, 50); err != nil {
-				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: AddUserCredits 50")
-				sentry.CaptureException(err)
-			}
-		} else if mint == "BUNDLE_100" {
-			if err := r.AddUserCredits(ctx, userID, 100); err != nil {
-				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: AddUserCredits 100")
-				sentry.CaptureException(err)
-			}
-		} else if mint == "SUB_MONTHLY_PRO" {
+		if mint == "SUB_MONTHLY_PRO" {
 			if err := r.ActivateSubscription(ctx, userID, "SUB_MONTHLY_PRO", 30, QuotaProMonthly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Monthly")
 				sentry.CaptureException(err)
+				return err
 			}
 		} else if mint == "SUB_WEEKLY_PRO" {
 			if err := r.ActivateSubscription(ctx, userID, "SUB_WEEKLY_PRO", 7, QuotaProWeekly); err != nil {
 				log.Error().Err(err).Str("user", userID).Msg("Fulfillment failed: ActivateSubscription Weekly")
 				sentry.CaptureException(err)
+				return err
 			}
 		} else if mint == "SUB_ULTRA_PRO" {
 			if err := r.ActivateSubscription(ctx, userID, "SUB_ULTRA_PRO", 30, QuotaUltraMonthly); err != nil {

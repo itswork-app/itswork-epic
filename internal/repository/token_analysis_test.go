@@ -7,21 +7,8 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
-
-func setupTestRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
-	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub redis connection", err)
-	}
-	client := redis.NewClient(&redis.Options{
-		Addr: mr.Addr(),
-	})
-	return mr, client
-}
 
 func TestSaveAnalysis_Success(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -125,9 +112,12 @@ func TestGetAnalysis_CacheMiss_DBHit(t *testing.T) {
 	repo := NewTokenRepository(db, rdb)
 	ctx := context.Background()
 
-	mock.ExpectQuery(`SELECT verdict, rug_score, reason, COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason, ` +
+		`COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) ` +
+		`FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_miss").
-		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).AddRow("RUG", 20, "Wallet too young", "UNKNOWN", "NORMAL"))
+		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).
+			AddRow("RUG", 20, "Wallet too young", "UNKNOWN", "NORMAL"))
 
 	resp, err := repo.GetAnalysis(ctx, "mint_miss", false)
 	assert.NoError(t, err)
@@ -151,7 +141,9 @@ func TestGetAnalysis_DBNotFound(t *testing.T) {
 	repo := NewTokenRepository(db, rdb)
 	ctx := context.Background()
 
-	mock.ExpectQuery(`SELECT verdict, rug_score, reason, COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason, ` +
+		`COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) ` +
+		`FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_not_found").
 		WillReturnError(sql.ErrNoRows)
 
@@ -176,9 +168,12 @@ func TestGetAnalysis_CacheUnmarshalError(t *testing.T) {
 	err = mr.Set("token_verdict:mint_unmarshal_err", `not-a-json`)
 	assert.NoError(t, err)
 
-	mock.ExpectQuery(`SELECT verdict, rug_score, reason, COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason, ` +
+		`COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) ` +
+		`FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_unmarshal_err").
-		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).AddRow("SAFE", 99, "Reason", "UNKNOWN", "NORMAL"))
+		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).
+			AddRow("SAFE", 99, "Reason", "UNKNOWN", "NORMAL"))
 
 	resp, err := repo.GetAnalysis(ctx, "mint_unmarshal_err", true)
 	assert.NoError(t, err)
@@ -198,9 +193,12 @@ func TestGetAnalysis_RedisGetAndSetError(t *testing.T) {
 	// Close miniredis immediately to force Redis GET and SET network errors
 	mr.Close()
 
-	mock.ExpectQuery(`SELECT verdict, rug_score, reason, COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`SELECT verdict, rug_score, reason, ` +
+		`COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) ` +
+		`FROM token_analysis WHERE mint_address = \$1`).
 		WithArgs("mint_redis_down").
-		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).AddRow("RUG", 20, "Reason", "UNKNOWN", "NORMAL"))
+		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason", "creator_reputation", "insider_risk"}).
+			AddRow("RUG", 20, "Reason", "UNKNOWN", "NORMAL"))
 
 	resp, err := repo.GetAnalysis(ctx, "mint_redis_down", true)
 	assert.NoError(t, err)
@@ -219,7 +217,7 @@ func TestGetAnalysis_DBQueryError(t *testing.T) {
 	repo := NewTokenRepository(db, rdb)
 	ctx := context.Background()
 
-	mock.ExpectQuery(`SELECT verdict, rug_score, reason, COALESCE\(creator_reputation, 'UNKNOWN'\), COALESCE\(insider_risk, 'NORMAL'\) FROM token_analysis WHERE mint_address = \$1`).
+	mock.ExpectQuery(`(?s)SELECT.*FROM.*token_analysis.*WHERE.*mint_address = \$1`).
 		WithArgs("mint_db_err").
 		WillReturnError(errors.New("db connection dropped"))
 
