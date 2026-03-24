@@ -19,7 +19,7 @@ func BenchmarkSniperVerdictHandler(b *testing.B) {
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	portalSub := processor.NewPortalSubscriber(rdb, nil)
+	portalSub := processor.NewPortalSubscriber(rdb, nil, nil)
 
 	// Pre-populate with a token
 	pm := processor.PortalMessage{

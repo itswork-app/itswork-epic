@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ type PortalSubscriber struct {
 	redisClient *redis.Client
 	brainClient Brainger
 	conn        *websocket.Conn
+	enricher    *Enricher
 
 	// Token state tracking
 	tokenCreators sync.Map // mint -> creatorAddr
@@ -56,11 +58,12 @@ type PortalMessage struct {
 	URI    string `json:"uri"`
 }
 
-func NewPortalSubscriber(redis *redis.Client, brain Brainger) *PortalSubscriber {
+func NewPortalSubscriber(redis *redis.Client, brain Brainger, enricher *Enricher) *PortalSubscriber {
 	return &PortalSubscriber{
 		url:         "wss://pumpportal.fun/api/data",
 		redisClient: redis,
 		brainClient: brain,
+		enricher:    enricher,
 	}
 }
 
@@ -165,6 +168,22 @@ func (s *PortalSubscriber) handleNewToken(pm PortalMessage) {
 			log.Warn().Str("mint", pm.Mint).Msg("BrainClient not available for initial analysis")
 			return
 		}
+		// PR-NEXUS-V1-PERFECTION: Quick Enrich & Alpha Signaling
+		if pm.TxType == "create" && s.enricher != nil {
+			go func() {
+				rpcURL := fmt.Sprintf("%s/?api-key=%s", s.enricher.BaseURL, s.enricher.HeliusAPIKey)
+				reputation, _ := s.enricher.checkCreatorReputation(context.Background(), rpcURL, pm.Trader)
+				if reputation == "Safe" {
+					log.Info().Str("mint", pm.Mint).Msg("ALPHA SIGNAL: Creator is Safe. Adding to potential_alpha_tokens.")
+					if s.redisClient != nil {
+						s.redisClient.SAdd(context.Background(), "potential_alpha_tokens", pm.Mint)
+						s.redisClient.Expire(context.Background(), "potential_alpha_tokens", 24*time.Hour)
+					}
+				}
+				state.CreatorReputation = reputation
+			}()
+		}
+
 		resp, err := s.brainClient.AnalyzeToken(
 			ctx, pm.Mint, pm.Trader,
 			0,     // Wallet age unknown from portal

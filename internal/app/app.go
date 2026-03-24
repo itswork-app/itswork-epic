@@ -84,14 +84,19 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 		brainClient = &processor.BrainClient{}
 	}
 
+	payService := pay.NewPayService(redisClient, payRepo, authRepo)
+	
+	// PR-NEXUS-V1-PERFECTION: Shared Enricher for both Reactive and Proactive pipelines
+	apiKey := os.Getenv("HELIUS_API_KEY")
+	enricher := processor.NewEnricher(apiKey, repo.GetRedis())
+
 	sub, err := processor.InitSubscriber(brainClient, repo)
 	if err != nil {
 		log.Warn().Err(err).Msg("Subscriber init failed - normal in restricted test envs")
-		sub = processor.NewSubscriber(brainClient, repo, nil, nil)
+		sub = processor.NewSubscriber(brainClient, repo, nil, enricher)
 	}
 
-	payService := pay.NewPayService(redisClient, payRepo, authRepo)
-	portalSub := processor.NewPortalSubscriber(redisClient, brainClient)
+	portalSub := processor.NewPortalSubscriber(redisClient, brainClient, enricher)
 	router := ingestor.SetupRouter(pub, repo, payRepo, payService, portalSub, authRepo)
 	srv := &http.Server{
 		Addr:    ":" + port,

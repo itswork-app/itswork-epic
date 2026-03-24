@@ -233,7 +233,7 @@ func TestSniperVerdictHandler(t *testing.T) {
 	t.Run("NotFound", func(t *testing.T) {
 		db, mock, _ := sqlmock.New()
 		defer db.Close()
-		portalSub := processor.NewPortalSubscriber(nil, nil)
+		portalSub := processor.NewPortalSubscriber(nil, nil, nil)
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request, _ = http.NewRequest("GET", "/", nil)
@@ -257,7 +257,7 @@ func TestSniperVerdictHandler(t *testing.T) {
 		defer mr.Close()
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-		portalSub := processor.NewPortalSubscriber(rdb, nil)
+		portalSub := processor.NewPortalSubscriber(rdb, nil, nil)
 		payRepo := repository.NewPaymentRepository(db, rdb)
 
 		// Manually inject state
