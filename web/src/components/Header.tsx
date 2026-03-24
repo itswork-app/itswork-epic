@@ -21,7 +21,7 @@ export async function Header() {
       </div>
       <div>
         {!userId ? (
-          <SignInButton mode="modal">
+          <SignInButton mode="modal" forceRedirectUrl="/onboarding">
             <button className="px-6 py-2.5 text-sm font-medium text-white transition-all duration-300 border rounded-full border-white/10 bg-white/3 hover:bg-white/8 hover:border-white/20 hover:shadow-[0_0_30px_rgba(255,255,255,0.05)] font-sans">
               Connect Identity
             </button>

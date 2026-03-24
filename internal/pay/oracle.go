@@ -29,73 +29,97 @@ type JupiterPriceResponse struct {
 }
 
 // GetSolPriceUSD retrieves the current SOL/USD price.
-// 1. Tries Jupiter API.
-// 2. Fallbacks to Redis cutoff (24h).
-// 3. Final fallback to $91.2.
 func (s *PayService) GetSolPriceUSD(ctx context.Context) float64 {
 	// 1. Try Jupiter API
-	resp, err := httpClient.Get(JupiterAPIURL)
-	if err == nil && resp.StatusCode == http.StatusOK {
-		var jupResp JupiterPriceResponse
-		if decodeErr := json.NewDecoder(resp.Body).Decode(&jupResp); decodeErr == nil {
-			if solData, ok := jupResp.Data["SOL"]; ok {
-				price, parseErr := strconv.ParseFloat(solData.Price, 64)
-				if parseErr == nil && price > 0 {
-					// Update Redis cutoff
-					if s.Redis != nil {
-						s.Redis.Set(ctx, RedisPriceKey, solData.Price, 24*time.Hour)
-					}
-					resp.Body.Close()
-					return price
-				}
-			}
-		}
-		resp.Body.Close()
+	if price := s.fetchJupiterPrice(ctx); price > 0 {
+		return price
 	}
 
-	// 2. Fallback to Binance API (PR-PRODUCTION-READY)
-	binanceURL := "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDC"
-	resp, err = http.Get(binanceURL)
-	if err == nil && resp.StatusCode == http.StatusOK {
-		var binResp struct {
-			Price string `json:"price"`
-		}
-		if decodeErr := json.NewDecoder(resp.Body).Decode(&binResp); decodeErr == nil {
-			price, parseErr := strconv.ParseFloat(binResp.Price, 64)
-			if parseErr == nil && price > 0 {
-				log.Info().Float64("price", price).Msg("Using Binance Fallback Price")
-				// Update Redis cutoff
-				if s.Redis != nil {
-					s.Redis.Set(ctx, RedisPriceKey, binResp.Price, 24*time.Hour)
-				}
-				resp.Body.Close()
-				return price
-			}
-		}
-		resp.Body.Close()
+	// 2. Fallback to Binance API
+	if price := s.fetchBinancePrice(ctx); price > 0 {
+		return price
 	}
 
 	// 3. Fallback to Redis
-	if err != nil || (resp != nil && resp.StatusCode != http.StatusOK) {
-		log.Error().Err(err).Msg("Jupiter API failed, falling back to Redis cutoff")
-		sentry.CaptureException(fmt.Errorf("Jupiter API Failure: %v", err))
+	if price := s.getRedisPrice(ctx); price > 0 {
+		return price
 	}
 
-	if s.Redis != nil {
-		cutoff, err := s.Redis.Get(ctx, RedisPriceKey).Result()
-		if err == nil {
-			price, err := strconv.ParseFloat(cutoff, 64)
-			if err == nil && price > 0 {
-				log.Info().Float64("price", price).Msg("Using Redis Cut-off Price")
-				return price
-			}
-		}
-	}
-
-	// 3. Hard Fallback
+	// 4. Hard Fallback
 	log.Warn().Float64("fallback", HardFallbackPrice).Msg("Using Hard Fallback Price ($91.2)")
 	sentry.CaptureMessage(fmt.Sprintf("Using Hard Fallback Price: %f", HardFallbackPrice))
 	return HardFallbackPrice
+}
+
+func (s *PayService) fetchJupiterPrice(ctx context.Context) float64 {
+	resp, err := httpClient.Get(JupiterAPIURL)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return 0
+	}
+	defer resp.Body.Close()
+
+	var jupResp JupiterPriceResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jupResp); err != nil {
+		return 0
+	}
+
+	if solData, ok := jupResp.Data["SOL"]; ok {
+		if price, err := strconv.ParseFloat(solData.Price, 64); err == nil && price > 0 {
+			s.updateRedisPrice(ctx, solData.Price)
+			return price
+		}
+	}
+	return 0
+}
+
+func (s *PayService) fetchBinancePrice(ctx context.Context) float64 {
+	binanceURL := "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDC"
+	resp, err := http.Get(binanceURL)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return 0
+	}
+	defer resp.Body.Close()
+
+	var binResp struct {
+		Price string `json:"price"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&binResp); err != nil {
+		return 0
+	}
+
+	if price, err := strconv.ParseFloat(binResp.Price, 64); err == nil && price > 0 {
+		log.Info().Float64("price", price).Msg("Using Binance Fallback Price")
+		s.updateRedisPrice(ctx, binResp.Price)
+		return price
+	}
+	return 0
+}
+
+func (s *PayService) getRedisPrice(ctx context.Context) float64 {
+	if s.Redis == nil {
+		return 0
+	}
+	cutoff, err := s.Redis.Get(ctx, RedisPriceKey).Result()
+	if err != nil {
+		return 0
+	}
+	if price, err := strconv.ParseFloat(cutoff, 64); err == nil && price > 0 {
+		log.Info().Float64("price", price).Msg("Using Redis Cut-off Price")
+		return price
+	}
+	return 0
+}
+
+func (s *PayService) updateRedisPrice(ctx context.Context, priceStr string) {
+	if s.Redis != nil {
+		s.Redis.Set(ctx, RedisPriceKey, priceStr, 24*time.Hour)
+	}
 }
 
 // ConvertUSDToSOL handles the conversion with 4 decimal precision

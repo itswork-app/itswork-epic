@@ -46,8 +46,8 @@ func SetupRouter(
 		origin := c.Request.Header.Get("Origin")
 		allowedOrigins := map[string]bool{
 			"http://localhost:3000":   true,
-			"https://itswork.app":      true,
-			"https://www.itswork.app":  true,
+			"https://itswork.app":     true,
+			"https://www.itswork.app": true,
 		}
 
 		if allowedOrigins[origin] {
@@ -365,5 +365,14 @@ func AuthSyncHandler(c *gin.Context, authRepo *repository.AuthRepository) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "User Synced Successfully"})
+	// Fetch role to assist frontend redirection (PR-POST-LOGIN-REDIRECT)
+	role, err := authRepo.GetUserRole(c.Request.Context(), userID)
+	if err != nil {
+		role = "unassigned"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "User Synced Successfully",
+		"role":   role,
+	})
 }

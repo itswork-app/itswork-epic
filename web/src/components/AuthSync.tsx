@@ -21,8 +21,19 @@ export function AuthSync() {
           });
           
           if (res.ok) {
-            console.log("User Synced Successfully");
+            const data = await res.json();
+            console.log("User Synced Successfully:", data.role);
             syncedRef.current = user.id;
+
+            // Redirect Logic (PR-POST-LOGIN-REDIRECT)
+            // Only redirect if we are on the landing page
+            if (window.location.pathname === "/") {
+              if (data.role === "unassigned" || !data.role) {
+                window.location.href = "/onboarding";
+              } else {
+                window.location.href = data.role === "trader" ? "/dashboard/trader" : "/dashboard/developer";
+              }
+            }
           }
         } catch (err) {
           console.error("Auth sync failed:", err);
