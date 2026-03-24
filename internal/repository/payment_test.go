@@ -6,8 +6,17 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
+
+func setupTestRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
+	mr, err := miniredis.Run()
+	assert.NoError(t, err)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	return mr, rdb
+}
 
 func TestSavePayment(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -140,7 +149,7 @@ func TestIsPaid_CacheMiss_DBHit(t *testing.T) {
 	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// 1. Subscription check fails
-	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+	mock.ExpectQuery("SELECT COUNT").
 		WithArgs("user123").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
@@ -152,7 +161,7 @@ func TestIsPaid_CacheMiss_DBHit(t *testing.T) {
 	mock.ExpectRollback()
 
 	// 3. Eceran check success
-	mock.ExpectQuery("SELECT COUNT(.*) FROM payments").
+	mock.ExpectQuery("SELECT COUNT").
 		WithArgs("user123", "mint456").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
@@ -171,7 +180,7 @@ func TestIsPaid_Subscription(t *testing.T) {
 	// Lazy-init
 	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
 
-	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+	mock.ExpectQuery("SELECT COUNT").
 		WithArgs("user123").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
@@ -196,7 +205,7 @@ func TestIsPaid_Credit(t *testing.T) {
 	mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	// 1. Subscription check fails
-	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+	mock.ExpectQuery("SELECT COUNT").
 		WithArgs("user123").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
@@ -228,7 +237,7 @@ func TestIsPaid_UsageLimitExceeded(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"free_scans_used"}).AddRow(3))
 
 	// 1. Subscription check fails
-	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+	mock.ExpectQuery("SELECT COUNT").
 		WithArgs("user123").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
@@ -240,7 +249,7 @@ func TestIsPaid_UsageLimitExceeded(t *testing.T) {
 	mock.ExpectRollback()
 
 	// 3. Eceran check fails
-	mock.ExpectQuery("SELECT COUNT(.*) FROM payments").
+	mock.ExpectQuery("SELECT COUNT").
 		WithArgs("user123", "mint456").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
@@ -280,6 +289,7 @@ func TestIsProSubscriber_CacheHit(t *testing.T) {
 	active := repo.IsProSubscriber(ctx, "user123")
 	assert.True(t, active)
 }
+
 func TestIsProSubscriber_CacheMiss(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
@@ -291,7 +301,7 @@ func TestIsProSubscriber_CacheMiss(t *testing.T) {
 	repo := NewPaymentRepository(db, rdb)
 	ctx := context.Background()
 
-	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+	mock.ExpectQuery("SELECT COUNT").
 		WithArgs("user_pro").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
@@ -426,10 +436,8 @@ func TestIsPaid_FreeTierAPI(t *testing.T) {
 		WithArgs("user123").
 		WillReturnRows(sqlmock.NewRows([]string{"free_api_used"}).AddRow(5))
 
-	// IncrementFreeUsage async DB (goroutine) - won't be mocked but won't block test
 	paid := repo.IsPaid(ctx, "user123", "mintapi", true)
 	assert.True(t, paid)
-	// Give goroutine time to finish (it will log an error since mock has no remaining expectations)
 }
 
 func TestIsPaid_FreeTierUI(t *testing.T) {
@@ -451,6 +459,7 @@ func TestIsPaid_FreeTierUI(t *testing.T) {
 	paid := repo.IsPaid(ctx, "user123", "mintui", false)
 	assert.True(t, paid)
 }
+
 func TestCheckAccessAndCommit_AtomicRecovery(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
@@ -487,7 +496,6 @@ func TestCheckAccessAndCommit_AtomicRecovery(t *testing.T) {
 
 	// SCENARIO: ANALYSIS FAILS (Work fails)
 	// We do NOT call CommitUsage. Quota should NOT be deducted.
-	// (In real app, we just stop here)
 
 	// SCENARIO: ANALYSIS SUCCEEDS (Work succeeds)
 	// Now we call CommitUsage

@@ -16,6 +16,9 @@ const (
 	QuotaUIBasic = 50
 	QuotaUIPro   = 200
 
+	// Audit Optimization: Centralized Multiplier
+	DevMultiplier = 3
+
 	// API quota tiers (Developer Portal - 3x Multiplier as per Audit)
 	QuotaAPIPro        = QuotaUIPro * DevMultiplier
 	QuotaAPIUltra      = 1200 * DevMultiplier // Equivalent to 400 UI scans
@@ -30,9 +33,6 @@ const (
 	// Free tier limits
 	FreeUIScans = 3
 	FreeAPIUses = 10
-
-	// Audit Optimization: Centralized Multiplier
-	DevMultiplier = 3
 )
 
 type Payment struct {
@@ -242,8 +242,6 @@ func (r *PaymentRepository) GetFreeUsage(ctx context.Context, userID, kind strin
 	return used
 }
 
-// IncrementFreeUsage atomically increments the free usage counter in Redis and DB.
-// kind: 'ui' or 'api'
 // IncrementFreeUsage synchronously increments the free usage counter in Redis and async in DB.
 // Audit PR-FIX-V1: Synchronous Redis increment prevents double-spending.
 func (r *PaymentRepository) IncrementFreeUsage(ctx context.Context, userID, kind string) {
