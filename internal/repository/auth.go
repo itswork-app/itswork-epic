@@ -87,6 +87,22 @@ func (r *AuthRepository) SaveUserRole(ctx context.Context, userID, role string) 
 	return nil
 }
 
+// SyncUser ensures a user exists in the database. Called on every login/sync.
+func (r *AuthRepository) SyncUser(ctx context.Context, userID string) error {
+	query := `
+		INSERT INTO users (id, created_at, updated_at)
+		VALUES ($1, now(), now())
+		ON CONFLICT (id) DO UPDATE SET updated_at = now();
+	`
+	_, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		log.Error().Err(err).Str("user", userID).Msg("Failed to sync user to local DB")
+		return err
+	}
+	log.Info().Str("user", userID).Msg("User Synced Successfully")
+	return nil
+}
+
 // GetUserRole retrieves the role for a specific user.
 func (r *AuthRepository) GetUserRole(ctx context.Context, userID string) (string, error) {
 	var role string

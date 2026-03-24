@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { Search, ShieldAlert, ShieldCheck, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ export function SearchBar() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ score: number; verdict: string; teaser?: boolean } | null>(null);
   const [error, setError] = useState("");
+  const { getToken, isSignedIn } = useAuth();
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +22,13 @@ export function SearchBar() {
     setError("");
 
     try {
-      const res = await fetch(`/api/v1/token/${address.trim()}?teaser=true`);
+      const isTeaser = !isSignedIn;
+      const token = isSignedIn ? await getToken() : null;
+      
+      const res = await fetch(`/api/v1/token/${address.trim()}${isTeaser ? "?teaser=true" : ""}`, {
+        headers: token ? { "Authorization": `Bearer ${token}` } : {}
+      });
+
       if (!res.ok) {
         throw new Error("Failed to fetch token intelligence");
       }
