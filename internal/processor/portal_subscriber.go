@@ -24,16 +24,16 @@ type PortalSubscriber struct {
 }
 
 type TokenState struct {
-	Mint           string
-	Creator        string
-	StartTime      time.Time
-	TradeCount     int
-	LastProgress   float32
-	DevSniped      bool
-	TradesPerMin   float32
-	FunderAddr     string
-	IsHighMomentum bool
-	Score          int
+	Mint              string
+	Creator           string
+	StartTime         time.Time
+	TradeCount        int
+	LastProgress      float32
+	DevSniped         bool
+	TradesPerMin      float32
+	FunderAddr        string
+	IsHighMomentum    bool
+	Score             int
 	Verdict           string
 	VelocityRank      string // 'LOW', 'MEDIUM', 'STORM'
 	CreatorReputation string
@@ -167,14 +167,14 @@ func (s *PortalSubscriber) handleNewToken(pm PortalMessage) {
 		}
 		resp, err := s.brainClient.AnalyzeToken(
 			ctx, pm.Mint, pm.Trader,
-			0,      // Wallet age unknown from portal
-			false,  // IsLpBurned unknown
-			0,      // Concentration unknown
-			false,  // Funding check unknown
-			false,  // IsRenounced unknown
-			false,  // HasSocials unknown
+			0,     // Wallet age unknown from portal
+			false, // IsLpBurned unknown
+			0,     // Concentration unknown
+			false, // Funding check unknown
+			false, // IsRenounced unknown
+			false, // HasSocials unknown
 			float32(pm.VSolInBondingCurve/85.0*100.0), // Bonding progress from portal
-			0,      // Trade velocity calculated later
+			0,          // Trade velocity calculated later
 			false, nil, // Golden wallet detection via subscriber only or expanded here?
 			"Unknown", 0, "Low", // Reputation/Insider default for portal launch
 		)

@@ -37,12 +37,12 @@ type VaultRepository interface {
 
 // HeliusPayload represents the simplified structure to extract needed fields
 type HeliusPayload struct {
-	MintAddress                     string  `json:"mint_address"`
-	CreatorAddress                  string  `json:"creator_address"`
-	CreatorWalletAgeHours           int32   `json:"creator_wallet_age_hours"`
-	IsLpBurned                      bool    `json:"is_lp_burned"`
-	Top10HolderConcentrationPercent float32 `json:"top_10_holder_concentration_percent"`
-	FundingSourceCheckPassed        bool    `json:"funding_source_check_passed"`
+	MintAddress                     string   `json:"mint_address"`
+	CreatorAddress                  string   `json:"creator_address"`
+	CreatorWalletAgeHours           int32    `json:"creator_wallet_age_hours"`
+	IsLpBurned                      bool     `json:"is_lp_burned"`
+	Top10HolderConcentrationPercent float32  `json:"top_10_holder_concentration_percent"`
+	FundingSourceCheckPassed        bool     `json:"funding_source_check_passed"`
 	IsRenounced                     bool     `json:"is_renounced"`
 	HasSocials                      bool     `json:"has_socials"`
 	HasGoldenWallets                bool     `json:"has_goldens"`

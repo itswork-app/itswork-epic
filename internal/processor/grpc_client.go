@@ -60,12 +60,12 @@ func (bc *BrainClient) AnalyzeToken(
 		IsRenounced:                      isRenounced,
 		HasSocials:                       hasSocials,
 		BondingProgress:                  bondingProgress,
-		TradeVelocity:                   tradeVelocity,
-		HasGoldenWallets:                hasGoldens,
-		GoldenWallets:                   goldens,
-		CreatorReputation:               reputation,
-		FailedProjectsCount:             failedCount,
-		InsiderRisk:                     insiderRisk,
+		TradeVelocity:                    tradeVelocity,
+		HasGoldenWallets:                 hasGoldens,
+		GoldenWallets:                    goldens,
+		CreatorReputation:                reputation,
+		FailedProjectsCount:              failedCount,
+		InsiderRisk:                      insiderRisk,
 	}
 
 	// High Performance: Calling async Brain via standard gRPC call

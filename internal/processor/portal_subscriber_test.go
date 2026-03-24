@@ -23,7 +23,14 @@ func TestPortalSubscriber_HandleMessage(t *testing.T) {
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	brain := &mockBrainger{
-		AnalyzeTokenFunc: func(ctx context.Context, mint, creator string, walletAge int32, isLpBurned bool, concentration float32, fundingPassed bool, isRenounced bool, hasSocials bool, bondingProgress, tradeVelocity float32, hasGoldens bool, goldens []string, reputation string, failedCount int32, insiderRisk string) (*proto.VerdictResponse, error) {
+		AnalyzeTokenFunc: func(
+			ctx context.Context, mint, creator string, walletAge int32,
+			isLpBurned bool, concentration float32, fundingPassed bool,
+			isRenounced bool, hasSocials bool,
+			bondingProgress, tradeVelocity float32,
+			hasGoldens bool, goldens []string,
+			reputation string, failedCount int32, insiderRisk string,
+		) (*proto.VerdictResponse, error) {
 			return &proto.VerdictResponse{Score: 80, Verdict: "BULLISH"}, nil
 		},
 	}

@@ -34,7 +34,11 @@ func (m *mockBrainger) AnalyzeToken(
 	reputation string, failedCount int32, insiderRisk string,
 ) (*proto.VerdictResponse, error) {
 	if m.AnalyzeTokenFunc != nil {
-		return m.AnalyzeTokenFunc(ctx, mint, creator, walletAge, isLpBurned, concentration, fundingPassed, isRenounced, hasSocials, bondingProgress, tradeVelocity, hasGoldens, goldens, reputation, failedCount, insiderRisk)
+		return m.AnalyzeTokenFunc(
+			ctx, mint, creator, walletAge, isLpBurned, concentration, fundingPassed,
+			isRenounced, hasSocials, bondingProgress, tradeVelocity,
+			hasGoldens, goldens, reputation, failedCount, insiderRisk,
+		)
 	}
 	if m.err != nil {
 		return nil, m.err

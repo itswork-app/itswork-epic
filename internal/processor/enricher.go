@@ -175,8 +175,8 @@ func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 	// PR-NEXUS-ELITE: Implement Enrichment Cache (5m TTL)
 	cacheKey := fmt.Sprintf("enrich:mint:%s", payload.MintAddress)
 	if e.redis != nil {
-		cached, err := e.redis.Get(ctx, cacheKey).Result()
-		if err == nil {
+		cached, rerr := e.redis.Get(ctx, cacheKey).Result()
+		if rerr == nil {
 			var cachedData struct {
 				IsLpBurned bool `json:"lp_burned"`
 			}
@@ -188,13 +188,13 @@ func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 	}
 
 	{
-		lpSafe, err := e.checkLpBurned(ctx, rpcURL, payload.MintAddress)
-		if err != nil {
-			log.Error().Err(err).Str("mint", payload.MintAddress).Msg("Failed to enrich LP status")
+		lpSafe, lperr := e.checkLpBurned(ctx, rpcURL, payload.MintAddress)
+		if lperr != nil {
+			log.Error().Err(lperr).Str("mint", payload.MintAddress).Msg("Failed to enrich LP status")
 		} else {
 			payload.IsLpBurned = lpSafe
 			if e.redis != nil {
-				data, _ := json.Marshal(map[string]bool{"lp_burned": lpSafe})
+				data, _ := json.Marshal(map[string]bool{"lp_burned": lperr == nil && lpSafe})
 				e.redis.Set(ctx, cacheKey, string(data), 5*time.Minute)
 			}
 		}
