@@ -10,13 +10,10 @@ import {
   ArrowRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { QuotaLimit } from "@/components/QuotaLimit";
 
 export default function TraderDashboard() {
   const { user, isLoaded } = useUser();
-  const scansUsed = 1;
-  const totalScans = 3;
-  
   if (!isLoaded) return null;
 
   return (
@@ -54,13 +51,8 @@ export default function TraderDashboard() {
              </p>
           </div>
           
-          <div className="w-full md:w-80 p-6 rounded-2xl bg-white/5 border border-white/10 space-y-4">
-            <div className="flex justify-between items-center text-xs font-mono uppercase tracking-widest">
-              <span className="text-slate-500">Daily Free Scans</span>
-              <span className="text-blue-400">{totalScans - scansUsed} Remaining</span>
-            </div>
-            <Progress value={(scansUsed / totalScans) * 100} className="h-2 bg-white/5" />
-            <p className="text-[10px] text-slate-500 font-sans text-center">Resets in 14 hours 22 minutes</p>
+          <div className="w-full md:w-80">
+            <QuotaLimit />
           </div>
         </header>
 

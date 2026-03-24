@@ -10,12 +10,14 @@ export function SearchBar() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ 
-    score: number; 
-    verdict: string; 
+    score: number;
+    verdict: string;
     reason?: string;
-    creator_reputation?: string;
-    insider_risk?: string;
-    teaser?: boolean 
+    teaser?: boolean;
+    enrichment?: {
+      creator_reputation: string;
+      insider_risk: string;
+    };
   } | null>(null);
   const [error, setError] = useState("");
   const { getToken, isSignedIn } = useAuth();
@@ -29,10 +31,13 @@ export function SearchBar() {
     setError("");
 
     try {
-      const isTeaser = !isSignedIn;
       const token = isSignedIn ? await getToken() : null;
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      const url = isSignedIn 
+        ? `${baseUrl}/api/v1/token/${address.trim()}` 
+        : `${baseUrl}/api/v1/token/${address.trim()}?teaser=true`;
       
-      const res = await fetch(`/api/v1/token/${address.trim()}${isTeaser ? "?teaser=true" : ""}`, {
+      const res = await fetch(url, {
         headers: token ? { "Authorization": `Bearer ${token}` } : {}
       });
 
@@ -46,9 +51,8 @@ export function SearchBar() {
         score: data.score || 0,
         verdict: data.verdict || "UNKNOWN",
         reason: data.reason,
-        creator_reputation: data.creator_reputation,
-        insider_risk: data.insider_risk,
         teaser: data.teaser || false,
+        enrichment: data.enrichment,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "ItsWork Intelligence Service is unreachable. Check your connection.";
@@ -137,16 +141,16 @@ export function SearchBar() {
               )}
 
               <div className="grid grid-cols-2 gap-4 w-full">
-                <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-left">
-                  <p className="text-[10px] font-mono text-slate-500 uppercase mb-1">Creator Reputation</p>
-                  <p className={`font-bold text-sm ${result.creator_reputation === "TRUSTED" ? "text-emerald-400" : "text-rose-500"}`}>
-                    {result.creator_reputation || (result.teaser ? "RESTRICTED" : "UNKNOWN")}
+                <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-left space-y-1">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-tighter">Creator Reputation</p>
+                  <p className={`font-bold text-sm tracking-tight ${result.teaser ? 'blur-md select-none' : 'text-emerald-400'}`}>
+                    {result.teaser ? 'REDACTED' : (result.enrichment?.creator_reputation || 'UNKNOWN')}
                   </p>
                 </div>
-                <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-left">
-                  <p className="text-[10px] font-mono text-slate-500 uppercase mb-1">Insider Risk</p>
-                  <p className={`font-bold text-sm ${result.insider_risk === "Low" ? "text-emerald-400" : "text-rose-500"}`}>
-                    {result.insider_risk || (result.teaser ? "RESTRICTED" : "NORMAL")}
+                <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-left space-y-1">
+                  <p className="text-[10px] font-mono text-slate-500 uppercase tracking-tighter">Insider Risk</p>
+                  <p className={`font-bold text-sm tracking-tight ${result.teaser ? 'blur-md select-none' : 'text-indigo-400'}`}>
+                    {result.teaser ? 'REDACTED' : (result.enrichment?.insider_risk || 'NORMAL')}
                   </p>
                 </div>
               </div>

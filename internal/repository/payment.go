@@ -126,10 +126,7 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 
 // CheckAccess (Audit PR-FIX-V1) differentiates between checking eligibility and committing usage.
 // Returns (grant, kind, error). kind is used by CommitUsage to finalize the charge.
-func (r *PaymentRepository) CheckAccess(ctx context.Context, userID, mint string, isAPI bool) (bool, string, error) {
-	_ = r.InitUserCredits(ctx, userID)
-
-	// 1. Cache Check
+func (r *PaymentRepository) checkCache(ctx context.Context, userID, mint string) (bool, string, error) {
 	cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
 	if r.redis != nil {
 		val, err := r.redis.Get(ctx, cacheKey).Result()
@@ -137,8 +134,10 @@ func (r *PaymentRepository) CheckAccess(ctx context.Context, userID, mint string
 			return true, "cache", nil
 		}
 	}
+	return false, "", nil
+}
 
-	// 2. FREE TIER CHECK (Atomic PR-NEXUS-INTELLIGENCE)
+func (r *PaymentRepository) checkFreeTier(ctx context.Context, userID string, isAPI bool) (bool, string, error) {
 	kind := "ui"
 	limit := int64(FreeUIScans)
 	if isAPI {
@@ -150,36 +149,65 @@ func (r *PaymentRepository) CheckAccess(ctx context.Context, userID, mint string
 	if err == nil && granted {
 		return true, "free_atomic_" + kind, nil
 	}
+	return false, "", nil
+}
 
-	// 3. SUBSCRIPTION CHECK
+func (r *PaymentRepository) checkSubscription(ctx context.Context, userID string) (bool, string, error) {
 	if r.IsProSubscriber(ctx, userID) {
 		remaining, _ := r.GetQuotaRemaining(ctx, userID)
 		if remaining > 0 {
 			return true, "subscription", nil
 		}
 	}
+	return false, "", nil
+}
 
-	if isAPI {
-		return false, "", nil
-	}
-
-	// 4. CREDIT CHECK
-	// Check balance without deducting
+func (r *PaymentRepository) checkCredits(ctx context.Context, userID, mint string) (bool, string, error) {
+	// 1. CREDIT CHECK
 	var balance int
-	err = r.db.QueryRowContext(ctx, "SELECT balance FROM user_credits WHERE user_id = $1", userID).Scan(&balance)
+	err := r.db.QueryRowContext(ctx, "SELECT balance FROM user_credits WHERE user_id = $1", userID).Scan(&balance)
 	if err == nil && balance > 0 {
 		return true, "credit", nil
 	}
 
-	// 5. SINGLE PAYMENT CHECK
+	// 2. SINGLE PAYMENT CHECK
 	var count int
 	query := `SELECT COUNT(*) FROM payments WHERE user_id = $1 AND mint_address = $2 AND status = 'success'`
 	err = r.db.QueryRowContext(ctx, query, userID, mint).Scan(&count)
 	if err == nil && count > 0 {
 		return true, "single_pay", nil
 	}
-
 	return false, "", nil
+}
+
+// CheckAccess (Audit PR-FIX-V1) differentiates between checking eligibility and committing usage.
+// Returns (grant, kind, error). kind is used by CommitUsage to finalize the charge.
+func (r *PaymentRepository) CheckAccess(ctx context.Context, userID, mint string, isAPI bool) (bool, string, error) {
+	if userID != "" && userID != "guest_teaser" {
+		_ = r.InitUserCredits(ctx, userID)
+	}
+
+	// 1. Cache Check
+	if granted, kind, _ := r.checkCache(ctx, userID, mint); granted {
+		return true, kind, nil
+	}
+
+	// 2. FREE TIER CHECK
+	if granted, kind, _ := r.checkFreeTier(ctx, userID, isAPI); granted {
+		return true, kind, nil
+	}
+
+	// 3. SUBSCRIPTION CHECK
+	if granted, kind, _ := r.checkSubscription(ctx, userID); granted {
+		return true, kind, nil
+	}
+
+	if isAPI {
+		return false, "", nil
+	}
+
+	// 4. CREDIT & SINGLE PAY CHECK
+	return r.checkCredits(ctx, userID, mint)
 }
 
 // CommitUsage (Audit PR-FIX-V1) performs the actual decrement/increment of counters.

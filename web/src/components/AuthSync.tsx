@@ -28,10 +28,14 @@ export function AuthSync() {
             // Redirect Logic (PR-POST-LOGIN-REDIRECT)
             // Only redirect if we are on the landing page
             if (window.location.pathname === "/") {
+              const isProd = window.location.hostname !== 'localhost';
               if (data.role === "unassigned" || !data.role) {
                 window.location.href = "/onboarding";
               } else {
-                window.location.href = data.role === "trader" ? "/dashboard/trader" : "/dashboard/developer";
+                const targetUrl = data.role === "trader" 
+                  ? (isProd ? 'https://trader.itswork.app' : 'http://localhost:3000') 
+                  : (isProd ? 'https://dev.itswork.app' : 'http://localhost:3000');
+                window.location.href = targetUrl;
               }
             }
           }

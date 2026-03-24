@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"regexp"
 
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
@@ -44,14 +45,25 @@ func SetupRouter(
 	// CORS Middleware (PR-PRODUCTION-READY)
 	r.Use(func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		allowedOrigins := map[string]bool{
-			"http://localhost:3000":   true,
-			"https://itswork.app":     true,
-			"https://www.itswork.app": true,
+		// Domain Selection Logic (Regex supported for subdomains)
+		allowedOrigin := "https://itswork.app" // Default
+		isAllowed := false
+
+		// Local Development
+		if origin == "http://localhost:3000" {
+			allowedOrigin = origin
+			isAllowed = true
+		} else if origin != "" {
+			// Production Subdomains (Regex: *.itswork.app)
+			matched, _ := regexp.MatchString(`^https?://.*\.itswork\.app$`, origin)
+			if matched || origin == "https://itswork.app" {
+				allowedOrigin = origin
+				isAllowed = true
+			}
 		}
 
-		if allowedOrigins[origin] {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+		if isAllowed {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		} else if origin == "" {
 			// Allow non-browser (e.g. curl/postman) or same-origin
 			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
@@ -107,6 +119,10 @@ func SetupRouter(
 
 		api.POST("/auth/sync", func(c *gin.Context) {
 			AuthSyncHandler(c, authRepo)
+		})
+
+		api.GET("/user/quota", func(c *gin.Context) {
+			GetQuotaHandler(c, payRepo)
 		})
 
 		// DEVELOPER PORTAL: API-only endpoint (X-API-KEY)
@@ -234,6 +250,10 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 			"score":   resp.Score,
 			"verdict": resp.Verdict,
 			"teaser":  true,
+			"enrichment": gin.H{
+				"creator_reputation": "REDACTED",
+				"insider_risk":       "REDACTED",
+			},
 			"message": "Upgrade to unlock creator reputation and holder insights.",
 		})
 		return
@@ -298,13 +318,37 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 
 	// Gated Response Logic (Full Success)
 	c.JSON(http.StatusOK, gin.H{
-		"mint":               mint,
-		"score":              resp.Score,
-		"verdict":            resp.Verdict,
-		"reason":             resp.Reason,
-		"creator_reputation": resp.CreatorReputation,
-		"insider_risk":       resp.InsiderRisk,
-		"is_paid":            true,
+		"mint":    mint,
+		"score":   resp.Score,
+		"verdict": resp.Verdict,
+		"reason":  resp.Reason,
+		"enrichment": gin.H{
+			"creator_reputation": resp.CreatorReputation,
+			"insider_risk":       resp.InsiderRisk,
+		},
+		"is_paid": true,
+	})
+}
+
+// GetQuotaHandler returns the user's current usage status (PR-MOCK-DESTRUCTION).
+func GetQuotaHandler(c *gin.Context, payRepo *repository.PaymentRepository) {
+	userID := GetUserID(c)
+	if userID == "" || userID == "guest_teaser" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	freeUI := payRepo.GetFreeUsage(ctx, userID, "ui")
+	freeAPI := payRepo.GetFreeUsage(ctx, userID, "api")
+	remaining, _ := payRepo.GetQuotaRemaining(ctx, userID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"free_ui":      freeUI,
+		"free_ui_max":  repository.FreeUIScans,
+		"free_api":     freeAPI,
+		"free_api_max": repository.FreeAPIUses,
+		"subscription": remaining,
 	})
 }
 

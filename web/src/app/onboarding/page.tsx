@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useUser, useAuth } from "@clerk/nextjs";
 import { LineChart, Code2, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,6 @@ import { Button } from "@/components/ui/button";
 export default function OnboardingPage() {
   const { isLoaded: userLoaded } = useUser();
   const { getToken } = useAuth();
-  const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
 
   const selectRole = async (role: "trader" | "developer") => {
@@ -26,7 +24,13 @@ export default function OnboardingPage() {
       });
 
       if (res.ok) {
-        router.push(role === "trader" ? "/dashboard/trader" : "/dashboard/developer");
+        // Domain shift logic (PR-NEXUS-SUBDOMAIN-ORCHESTRATION)
+        const isProd = window.location.hostname !== 'localhost';
+        const targetUrl = role === 'trader' 
+          ? (isProd ? 'https://trader.itswork.app' : 'http://localhost:3000') 
+          : (isProd ? 'https://dev.itswork.app' : 'http://localhost:3000');
+        
+        window.location.href = targetUrl;
       }
     } catch (err) {
       console.error("Role selection failed:", err);
