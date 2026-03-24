@@ -17,8 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function DeveloperDashboard() {
-  const { user, isLoaded } = useUser();
-  const [apiKey, setApiKey] = useState("itswork_live_7k82jr91mnxv3p4l0q");
+  const { isLoaded } = useUser();
+  const [apiKey] = useState("itswork_live_7k82jr91mnxv3p4l0q");
   
   if (!isLoaded) return null;
 
@@ -149,9 +149,9 @@ export default function DeveloperDashboard() {
                <div className="text-indigo-400 mb-2">$ curl -X GET &quot;https://api.itswork.app/v1/sniper/verdict/7vfC...&quot; \</div>
                <div className="text-indigo-400 mb-4">  -H &quot;X-API-KEY: {apiKey.substring(0, 12)}...&quot;</div>
                <div className="text-slate-500">{`{`}</div>
-               <div className="text-slate-400 ml-4">"mint": "7vfCXTUX...",</div>
-               <div className="text-slate-400 ml-4">"score": 88,</div>
-               <div className="text-emerald-400 ml-4">"verdict": "SAFE",</div>
+               <div className="text-slate-400 ml-4">&quot;mint&quot;: &quot;7vfCXTUX...&quot;,</div>
+               <div className="text-slate-400 ml-4">&quot;score&quot;: 88,</div>
+               <div className="text-emerald-400 ml-4">&quot;verdict&quot;: &quot;SAFE&quot;,</div>
                <div className="text-slate-500">{`}`}</div>
                
                <div className="absolute bottom-6 right-6">

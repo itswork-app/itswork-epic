@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom'
-import { vi, beforeAll } from 'vitest'
+import { vi } from 'vitest'
 
 // Mock Next.js Navigation
 vi.mock('next/navigation', () => ({
