@@ -11,8 +11,6 @@ export function SearchBar() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ 
     score: number; 
-    verdict: string; 
-    reason?: string;
     teaser?: boolean;
     enrichment?: {
       creator_reputation: string;
