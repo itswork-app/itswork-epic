@@ -27,6 +27,41 @@ func NewEnricher(apiKey string) *Enricher {
 	}
 }
 
+// doWithRetry (Audit PR-FIX-V1) implements exponential backoff for Helius RPC 429 errors.
+func (e *Enricher) doWithRetry(ctx context.Context, req *http.Request) (*http.Response, error) {
+	var lastResp *http.Response
+	var err error
+
+	backoff := 100 * time.Millisecond
+	for i := 0; i < 3; i++ {
+		lastResp, err = e.client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if lastResp.StatusCode != http.StatusTooManyRequests {
+			return lastResp, nil
+		}
+
+		// Close body before retry to prevent leaks
+		lastResp.Body.Close()
+
+		log.Warn().
+			Int("retry", i+1).
+			Dur("wait", backoff).
+			Msg("Helius Rate Limit (429) hit, retrying with backoff...")
+
+		select {
+		case <-time.After(backoff):
+			backoff *= 2
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	return lastResp, nil
+}
+
 func (e *Enricher) Enrich(ctx context.Context, payload *HeliusPayload) error {
 	// Make sure we have some reasonable heuristics passed rather than 0
 	if payload.Top10HolderConcentrationPercent == 0 {
@@ -98,7 +133,7 @@ func (e *Enricher) fetchWalletAge(ctx context.Context, rpcURL, address string) (
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := e.client.Do(req)
+	resp, err := e.doWithRetry(ctx, req)
 	if err != nil {
 		return 0, err
 	}
@@ -150,7 +185,7 @@ func (e *Enricher) fetchAssetData(ctx context.Context, rpcURL, mint string) (map
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := e.client.Do(req)
+	resp, err := e.doWithRetry(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +268,7 @@ func (e *Enricher) checkLpBurned(ctx context.Context, rpcURL, mint string) (bool
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := e.client.Do(req)
+	resp, err := e.doWithRetry(ctx, req)
 	if err != nil {
 		return false, err
 	}
@@ -289,7 +324,7 @@ func (e *Enricher) checkFunding(ctx context.Context, rpcURL, address string) (bo
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := e.client.Do(req)
+	resp, err := e.doWithRetry(ctx, req)
 	if err != nil {
 		return true, err
 	}
@@ -330,7 +365,7 @@ func (e *Enricher) checkFunding(ctx context.Context, rpcURL, address string) (bo
 	txReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewBuffer(txBodyBytes))
 	txReq.Header.Set("Content-Type", "application/json")
 
-	txResp, err := e.client.Do(txReq)
+	txResp, err := e.doWithRetry(ctx, txReq)
 	if err != nil {
 		return true, err
 	}

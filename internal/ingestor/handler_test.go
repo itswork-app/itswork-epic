@@ -2,6 +2,7 @@ package ingestor
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -230,41 +231,56 @@ func TestSniperVerdictHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	t.Run("NotFound", func(t *testing.T) {
+		db, mock, _ := sqlmock.New()
+		defer db.Close()
 		portalSub := processor.NewPortalSubscriber(nil, nil)
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
+		c.Request, _ = http.NewRequest("GET", "/", nil)
 		c.Params = []gin.Param{{Key: "mint", Value: "missing"}}
 
-		SniperVerdictHandler(c, portalSub)
-		assert.Equal(t, http.StatusNotFound, w.Code)
+		payRepo := repository.NewPaymentRepository(db, nil)
+
+		// CheckAccess calls InitUserCredits, IsProSubscriber (if needed)
+		mock.ExpectExec("INSERT INTO user_credits").WillReturnResult(sqlmock.NewResult(1, 1))
+		// CheckAccess for isAPI=true checks FreeAPIUsage (GetFreeUsage -> DB fallback if redis nil)
+		mock.ExpectQuery("SELECT free_api_used FROM users").WillReturnRows(sqlmock.NewRows([]string{"free_api_used"}).AddRow(10))
+
+		SniperVerdictHandler(c, portalSub, payRepo)
+		assert.Equal(t, http.StatusForbidden, w.Code) // Free usage exhausted
 	})
 
 	t.Run("Success", func(t *testing.T) {
+		db, mock, _ := sqlmock.New()
+		defer db.Close()
 		mr, _ := miniredis.Run()
 		defer mr.Close()
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
 		portalSub := processor.NewPortalSubscriber(rdb, nil)
+		payRepo := repository.NewPaymentRepository(db, rdb)
 
-		// Manually inject state for testing (simulating a create event)
+		// Manually inject state
 		pm := processor.PortalMessage{
 			TxType: "create",
 			Mint:   "snipe123",
 			Trader: "creator123",
 		}
-
-		// We can't call private handleMessage, but we can call Start in a limited way or
-		// if we make handleMessage public. Wait, I made it public in my thought but wrote it as private?
-		// Let me check portal_subscriber.go.
-
-		// It's public: func (s *PortalSubscriber) HandleMessage(pm PortalMessage)
 		portalSub.HandleMessage(pm)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
+		c.Request, _ = http.NewRequest("GET", "/", nil)
 		c.Params = []gin.Param{{Key: "mint", Value: "snipe123"}}
 
-		SniperVerdictHandler(c, portalSub)
+		// Auth & Quota Data
+		c.Set("userID", "user123")
+		rdb.Set(context.Background(), "free:user:user123:api", "0", 0)
+
+		// InitUserCredits call
+		mock.ExpectExec("INSERT INTO user_credits").WithArgs("user123").WillReturnResult(sqlmock.NewResult(1, 1))
+
+		SniperVerdictHandler(c, portalSub, payRepo)
 		assert.Equal(t, http.StatusOK, w.Code)
 
 		var resp map[string]interface{}

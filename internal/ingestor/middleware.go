@@ -33,7 +33,7 @@ func DualAuthMiddleware(authRepo *repository.AuthRepository, payRepo *repository
 
 			userID, err := authRepo.GetUserIDByAPIKey(c.Request.Context(), hash)
 			if err != nil {
-				log.Error().Err(err).Msg("API Key validation error")
+				log.Error().Err(err).Str("key", maskKey(apiKey)).Msg("API Key validation error")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal auth error"})
 				c.Abort()
 				return
@@ -109,4 +109,12 @@ func GetUserID(c *gin.Context) string {
 // FetchClerkUser is a helper if we ever need more than the ID
 func FetchClerkUser(ctx context.Context, userID string) (*clerk.User, error) {
 	return user.Get(ctx, userID)
+}
+
+// maskKey (Audit PR-FIX-V1) protects sensitive keys in logs
+func maskKey(key string) string {
+	if len(key) <= 8 {
+		return "****"
+	}
+	return key[:4] + "...." + key[len(key)-4:]
 }
