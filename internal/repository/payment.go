@@ -414,7 +414,7 @@ func (r *PaymentRepository) ActivateSubscription(ctx context.Context, userID, pl
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// 1. Fetch current subscription to detect transition type
 	var oldPlan, oldStatus string
