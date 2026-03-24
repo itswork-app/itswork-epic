@@ -75,11 +75,11 @@
 				
 				<option value="file9">itswork.app/internal/processor/grpc_client.go (95.0%)</option>
 				
-				<option value="file10">itswork.app/internal/processor/portal_subscriber.go (53.3%)</option>
+				<option value="file10">itswork.app/internal/processor/portal_subscriber.go (78.3%)</option>
 				
 				<option value="file11">itswork.app/internal/processor/subscriber.go (96.4%)</option>
 				
-				<option value="file12">itswork.app/internal/repository/payment.go (80.0%)</option>
+				<option value="file12">itswork.app/internal/repository/payment.go (81.7%)</option>
 				
 				<option value="file13">itswork.app/internal/repository/token_analysis.go (94.1%)</option>
 				
@@ -1709,14 +1709,14 @@ func (s *PortalSubscriber) Start(ctx context.Context) error <span class="cov0" t
         }
 }
 
-func (s *PortalSubscriber) connectAndListen(ctx context.Context) error <span class="cov0" title="0">{
+func (s *PortalSubscriber) connectAndListen(ctx context.Context) error <span class="cov8" title="1">{
         log.Info().Str("url", s.url).Msg("Connecting to Pump Portal WebSocket...")
         
         conn, _, err := websocket.DefaultDialer.Dial(s.url, nil)
         if err != nil </span><span class="cov0" title="0">{
                 return err
         }</span>
-        <span class="cov0" title="0">s.conn = conn
+        <span class="cov8" title="1">s.conn = conn
         defer conn.Close()
 
         // 1. Subscribe to New Tokens
@@ -1725,24 +1725,24 @@ func (s *PortalSubscriber) connectAndListen(ctx context.Context) error <span cla
         }</span>
         
         // 2. Subscribe to ALL Trades for velocity tracking (High Volume)
-        <span class="cov0" title="0">if err := conn.WriteJSON(map[string]string{"method": "subscribeAllTokenTrades"}); err != nil </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if err := conn.WriteJSON(map[string]string{"method": "subscribeAllTokenTrades"}); err != nil </span><span class="cov0" title="0">{
                 // Fallback to subscribeTokenTrade if all is not available, but usually it is
                 log.Warn().Msg("Failed to subscribeAllTokenTrades, attempting fallback...")
         }</span>
 
-        <span class="cov0" title="0">for </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">for </span><span class="cov8" title="1">{
                 _, message, err := conn.ReadMessage()
-                if err != nil </span><span class="cov0" title="0">{
+                if err != nil </span><span class="cov8" title="1">{
                         return err
                 }</span>
 
-                <span class="cov0" title="0">var pm PortalMessage
+                <span class="cov8" title="1">var pm PortalMessage
                 if err := json.Unmarshal(message, &amp;pm); err != nil </span><span class="cov0" title="0">{
                         log.Error().Err(err).Msg("Failed to unmarshal portal message")
                         continue</span>
                 }
 
-                <span class="cov0" title="0">go s.HandleMessage(pm)</span>
+                <span class="cov8" title="1">go s.HandleMessage(pm)</span>
         }
 }
 
@@ -1809,7 +1809,7 @@ func (s *PortalSubscriber) handleTrade(pm PortalMessage) <span class="cov8" titl
 func (s *PortalSubscriber) cacheState(mint string, state *TokenState) <span class="cov8" title="1">{
         data, _ := json.Marshal(state)
         err := s.redisClient.Set(context.Background(), "sniper:v1:"+mint, data, 60*time.Second).Err()
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 log.Error().Err(err).Msg("Failed to cache sniper state to Redis")
         }</span>
 }
@@ -2069,7 +2069,7 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
                 RETURNING user_id, mint_address, amount_sol;
         `
         err := r.db.QueryRowContext(ctx, query, status, reference).Scan(&amp;userID, &amp;mint, &amp;amount)
-        if err != nil </span><span class="cov0" title="0">{
+        if err != nil </span><span class="cov8" title="1">{
                 return err
         }</span>
 
@@ -2189,7 +2189,7 @@ func (r *PaymentRepository) IsProSubscriber(ctx context.Context, userID string) 
         // 3. Backfill Cache (5 minutes TTL for subscriptions)
         if r.redis != nil </span><span class="cov8" title="1">{
                 statusStr := "false"
-                if isActive </span><span class="cov0" title="0">{
+                if isActive </span><span class="cov8" title="1">{
                         statusStr = "true"
                 }</span>
                 <span class="cov8" title="1">r.redis.Set(ctx, subCacheKey, statusStr, 5*time.Minute)</span>

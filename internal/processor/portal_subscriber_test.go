@@ -2,10 +2,15 @@ package processor
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
@@ -91,3 +96,63 @@ func TestPortalSubscriber_GetSniperVerdict_NotFound(t *testing.T) {
 	_, ok := s.GetSniperVerdict("missing")
 	assert.False(t, ok)
 }
+
+func TestPortalSubscriber_ConnectAndListen(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		
+		// Receive subscription
+		_, _, _ = c.ReadMessage()
+		
+		// Send a dummy message
+		msg := PortalMessage{
+			TxType: "create",
+			Mint:   "mock123",
+			Trader: "mocktrader",
+		}
+		data, _ := json.Marshal(msg)
+		_ = c.WriteMessage(websocket.TextMessage, data)
+		
+		// Close after a bit
+		time.Sleep(100 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	
+	s := NewPortalSubscriber(rdb, nil)
+	s.url = wsURL
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	
+	// We run connectAndListen in a way that it will eventually return due to server close
+	err := s.connectAndListen(ctx)
+	assert.Error(t, err) // Expected error on close
+	
+	val, ok := s.GetSniperVerdict("mock123")
+	assert.True(t, ok)
+	assert.Equal(t, "mocktrader", val.Creator)
+}
+
+func TestPortalSubscriber_CacheState_Fail(t *testing.T) {
+	mr, _ := miniredis.Run()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	
+	s := NewPortalSubscriber(rdb, nil)
+	mr.Close() // Force failure
+	
+	s.cacheState("mint_fail", &TokenState{})
+	// Should log error but not panic
+}
+
+
