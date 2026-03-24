@@ -92,11 +92,11 @@ export default function TraderDashboard() {
                  </div>
                  
                  <div className="flex-1 text-center md:text-left space-y-4">
-                   <h4 className="text-4xl md:text-6xl font-heading font-black tracking-widest text-rose-500 uppercase italic">DANGER</h4>
-                   <p className="text-slate-400 font-sans leading-relaxed text-sm md:text-base border-l-2 border-white/10 pl-6 py-2">
-                     <strong className="text-white">Narrative Verdict:</strong> Kreator ini terdeteksi memiliki riwayat &quot;Serial Rugger&quot;. Tim intelijen kami menemukan keterkaitan on-chain dengan koin <span className="text-blue-400">$MOKONDO</span> yang di-drain dalam 4 menit setelah peluncuran. 
-                   </p>
-                 </div>
+                    <h4 className="text-4xl md:text-6xl font-heading font-black tracking-widest text-rose-500 uppercase italic">PENDING</h4>
+                    <p className="text-slate-400 font-sans leading-relaxed text-sm md:text-base border-l-2 border-white/10 pl-6 py-2">
+                      <strong className="text-white">Narrative Verdict:</strong> Select an active target from the terminal to view full institutional intelligence and pattern recognition results.
+                    </p>
+                  </div>
                </div>
 
                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4">

@@ -19,16 +19,18 @@ describe('SearchBar', () => {
 
   it('shows intelligent blur for guest teaser results', async () => {
     // Mock successful teaser response
-    fetchMock.mockResponseOnce(JSON.stringify({
-      mint: '7vfCXTUX...',
-      score: 85,
-      verdict: 'SAFE',
-      teaser: true,
-      intelligence: {
-        creator_reputation: 'REDACTED',
-        insider_risk: 'REDACTED'
-      }
-    }))
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        mint: '7vfCXTUX...',
+        score: 85,
+        verdict: 'SAFE',
+        teaser: true,
+        reason: 'Clean history confirmed.',
+        creator_reputation: 'TRUSTED',
+        insider_risk: 'Low'
+      })
+    })
 
     render(<SearchBar />)
     const input = screen.getByPlaceholderText(/Enter Solana mint/i)
