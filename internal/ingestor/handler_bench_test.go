@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"itswork.app/internal/processor"
+	"itswork.app/internal/repository"
 )
 
 func BenchmarkSniperVerdictHandler(b *testing.B) {
@@ -29,13 +30,18 @@ func BenchmarkSniperVerdictHandler(b *testing.B) {
 	}
 	portalSub.HandleMessage(pm)
 
+	payRepo := repository.NewPaymentRepository(nil, rdb)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
+		c.Request, _ = http.NewRequest("GET", "/", nil)
 		c.Params = []gin.Param{{Key: "mint", Value: "benchmint"}}
+		c.Set("userID", "benchuser")
+		mr.Set("free:user:benchuser:api", "0")
 
-		SniperVerdictHandler(c, portalSub)
+		SniperVerdictHandler(c, portalSub, payRepo)
 
 		if w.Code != http.StatusOK {
 			b.Errorf("expected 200, got %d", w.Code)

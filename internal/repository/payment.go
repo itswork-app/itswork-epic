@@ -16,10 +16,10 @@ const (
 	QuotaUIBasic = 50
 	QuotaUIPro   = 200
 
-	// API quota tiers (Developer Portal)
-	QuotaAPIPro        = 600
-	QuotaAPIUltra      = 3600
-	QuotaAPIEnterprise = 23100
+	// API quota tiers (Developer Portal - 3x Multiplier as per Audit)
+	QuotaAPIPro        = QuotaUIPro * DevMultiplier
+	QuotaAPIUltra      = 1200 * DevMultiplier // Equivalent to 400 UI scans
+	QuotaAPIEnterprise = 7700 * DevMultiplier // Equivalent to 2566 UI scans
 
 	// Legacy compatibility (used in fulfillment logic)
 	QuotaProMonthly   = QuotaUIPro
@@ -30,6 +30,9 @@ const (
 	// Free tier limits
 	FreeUIScans = 3
 	FreeAPIUses = 10
+
+	// Audit Optimization: Centralized Multiplier
+	DevMultiplier = 3
 )
 
 type Payment struct {
@@ -121,75 +124,93 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 	return nil
 }
 
-// IsPaid checks if a user has paid or eligible access for a specific mint.
-// isAPI=true enforces the Developer Portal rules (no single-payment fallback).
-// isAPI=false enforces the Marketing Portal rules (free 3 scans, sub, single pay).
-func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string, isAPI bool) bool {
+// CheckAccess (Audit PR-FIX-V1) differentiates between checking eligibility and committing usage.
+// Returns (grant, kind, error). kind is used by CommitUsage to finalize the charge.
+func (r *PaymentRepository) CheckAccess(ctx context.Context, userID, mint string, isAPI bool) (bool, string, error) {
 	_ = r.InitUserCredits(ctx, userID)
 
+	// 1. Cache Check
 	cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
 	if r.redis != nil {
 		val, err := r.redis.Get(ctx, cacheKey).Result()
 		if err == nil && val == "true" {
-			log.Info().Str("user", userID).Str("mint", mint).Msg("Access granted via Cache")
-			return true
+			return true, "cache", nil
 		}
 	}
 
-	// FREE TIER CHECK
-	freeCacheKind := "ui"
-	freeLimit := int64(FreeUIScans)
+	// 2. FREE TIER CHECK
+	kind := "ui"
+	limit := int64(FreeUIScans)
 	if isAPI {
-		freeCacheKind = "api"
-		freeLimit = int64(FreeAPIUses)
+		kind = "api"
+		limit = int64(FreeAPIUses)
 	}
-	used := r.GetFreeUsage(ctx, userID, freeCacheKind)
-	if used < freeLimit {
-		r.IncrementFreeUsage(ctx, userID, freeCacheKind)
-		r.cacheAccess(ctx, userID, mint)
-		log.Info().Str("user", userID).Str("mint", mint).Int64("used", used).Str("kind", freeCacheKind).Msg("Access granted via Free Tier")
-		return true
+	used := r.GetFreeUsage(ctx, userID, kind)
+	if used < limit {
+		return true, "free_" + kind, nil
 	}
 
-	// SUBSCRIPTION CHECK (both UI and API)
+	// 3. SUBSCRIPTION CHECK
 	if r.IsProSubscriber(ctx, userID) {
 		remaining, _ := r.GetQuotaRemaining(ctx, userID)
 		if remaining > 0 {
-			r.IncrementUsage(ctx, userID)
-			r.cacheAccess(ctx, userID, mint)
-			log.Info().Str("user", userID).Str("mint", mint).Int64("remaining", remaining).Str("usage_type", "SUBSCRIPTION").Msg("Access granted")
-			return true
+			return true, "subscription", nil
 		}
-		log.Warn().Str("user", userID).Msg("Subscription quota exhausted")
 	}
 
-	// API path: no single-payment fallback — only subscription allowed
 	if isAPI {
-		return false
+		return false, "", nil
 	}
 
-	// UI ONLY: Credit deduction fallback
-	deducted, err := r.DeductCredit(ctx, userID)
-	if err == nil && deducted {
-		r.cacheAccess(ctx, userID, mint)
-		log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "CREDIT").Msg("Access granted")
-		return true
+	// 4. CREDIT CHECK
+	// Check balance without deducting
+	var balance int
+	err := r.db.QueryRowContext(ctx, "SELECT balance FROM user_credits WHERE user_id = $1", userID).Scan(&balance)
+	if err == nil && balance > 0 {
+		return true, "credit", nil
 	}
 
-	// UI ONLY: Single payment lookup (eceran $0.50)
+	// 5. SINGLE PAYMENT CHECK
 	var count int
 	query := `SELECT COUNT(*) FROM payments WHERE user_id = $1 AND mint_address = $2 AND status = 'success'`
 	err = r.db.QueryRowContext(ctx, query, userID, mint).Scan(&count)
-	if err != nil {
-		log.Error().Err(err).Msg("Database query for payment status failed")
-		return false
+	if err == nil && count > 0 {
+		return true, "single_pay", nil
 	}
-	isPaid := count > 0
-	if isPaid {
+
+	return false, "", nil
+}
+
+// CommitUsage (Audit PR-FIX-V1) performs the actual decrement/increment of counters.
+// Should be called ONLY after successful analysis/work to ensure atomic quota recovery.
+func (r *PaymentRepository) CommitUsage(ctx context.Context, userID, kind, mint string) {
+	switch kind {
+	case "cache":
+		// No-op, already cached
+	case "free_ui":
+		r.IncrementFreeUsage(ctx, userID, "ui")
 		r.cacheAccess(ctx, userID, mint)
-		log.Info().Str("user", userID).Str("mint", mint).Str("usage_type", "SINGLE_PAY").Msg("Access granted")
+	case "free_api":
+		r.IncrementFreeUsage(ctx, userID, "api")
+		r.cacheAccess(ctx, userID, mint)
+	case "subscription":
+		r.IncrementUsage(ctx, userID)
+		r.cacheAccess(ctx, userID, mint)
+	case "credit":
+		_, _ = r.DeductCredit(ctx, userID)
+		r.cacheAccess(ctx, userID, mint)
+	case "single_pay":
+		r.cacheAccess(ctx, userID, mint)
 	}
-	return isPaid
+}
+
+// IsPaid - DEPRECATED in PR-FIX-V1. Use CheckAccess + CommitUsage for atomic recovery.
+func (r *PaymentRepository) IsPaid(ctx context.Context, userID, mint string, isAPI bool) bool {
+	grant, kind, _ := r.CheckAccess(ctx, userID, mint, isAPI)
+	if grant {
+		r.CommitUsage(ctx, userID, kind, mint)
+	}
+	return grant
 }
 
 // GetFreeUsage returns the number of free scans used by a user.
@@ -223,11 +244,16 @@ func (r *PaymentRepository) GetFreeUsage(ctx context.Context, userID, kind strin
 
 // IncrementFreeUsage atomically increments the free usage counter in Redis and DB.
 // kind: 'ui' or 'api'
+// IncrementFreeUsage synchronously increments the free usage counter in Redis and async in DB.
+// Audit PR-FIX-V1: Synchronous Redis increment prevents double-spending.
 func (r *PaymentRepository) IncrementFreeUsage(ctx context.Context, userID, kind string) {
-	// 1. Increment Redis atomically
+	// 1. Increment Redis synchronously (CRITICAL for double-spend prevention)
 	redisKey := fmt.Sprintf("free:user:%s:%s", userID, kind)
 	if r.redis != nil {
-		r.redis.Incr(ctx, redisKey)
+		err := r.redis.Incr(ctx, redisKey).Err()
+		if err != nil {
+			log.Error().Err(err).Str("user", userID).Msg("Failed to increment free usage in Redis")
+		}
 	}
 
 	// 2. Async DB sync

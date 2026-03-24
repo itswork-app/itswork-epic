@@ -71,17 +71,28 @@ func SetupRouter(
 				c.JSON(http.StatusForbidden, gin.H{"error": "API endpoint only. Use X-API-KEY header for bot access."})
 				return
 			}
-			SniperVerdictHandler(c, portalSub)
+			SniperVerdictHandler(c, portalSub, payRepo)
 		})
 	}
 
 	return r
 }
 
-func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber) {
+func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber, payRepo *repository.PaymentRepository) {
 	mint := c.Param("mint")
 	if mint == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mint"})
+		return
+	}
+
+	// Audit PR-FIX-V1: API Quota Gating
+	userID := GetUserID(c)
+	granted, accessKind, err := payRepo.CheckAccess(c.Request.Context(), userID, mint, true)
+	if err != nil || !granted {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":  "Access Denied",
+			"reason": "Sniper API access requires an active subscription and available quota.",
+		})
 		return
 	}
 
@@ -90,6 +101,9 @@ func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Token not being tracked or not found in Pump Portal stream"})
 		return
 	}
+
+	// Success: Deduct Quota
+	payRepo.CommitUsage(c.Request.Context(), userID, accessKind, mint)
 
 	// Minimalist High-Speed JSON Output for Bots (Merging fields for maximum utility)
 	c.JSON(http.StatusOK, gin.H{
@@ -148,49 +162,41 @@ func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payR
 	// Access Control: Identify user and auth method
 	userID := GetUserID(c)
 	authMethod, _ := c.Get("authMethod")
-	isPaid := false
+	isAPI := (authMethod == "api_key")
 
-	if userID != "" {
-		if authMethod == "api_key" {
-			// STRICT: Bots (API Key) must have active subscription. No bundle/eceran.
-			if payRepo.IsProSubscriber(c.Request.Context(), userID) {
-				remaining, _ := payRepo.GetQuotaRemaining(c.Request.Context(), userID)
-				if remaining > 0 {
-					payRepo.IncrementUsage(c.Request.Context(), userID)
-					isPaid = true
-				} else {
-					c.JSON(http.StatusPaymentRequired, gin.H{
-						"error":  "Quota Exhausted",
-						"reason": "API Key quota reached. Please upgrade to ULTRA or ENTERPRISE.",
-					})
-					return
-				}
-			} else {
-				c.JSON(http.StatusForbidden, gin.H{
-					"error":  "Subscription Required",
-					"reason": "Bot API access is restricted to Pro/Ultra/Enterprise subscribers. Bundle credits are for Dashboard use only.",
-				})
-				return
-			}
-		} else {
-			// Dashboard (Human) uses hybrid logic including free tier
-			isPaid = payRepo.IsPaid(c.Request.Context(), userID, mint, false)
-		}
-	}
-
-	if !isPaid {
-		c.JSON(http.StatusPaymentRequired, gin.H{
-			"error":  "Insufficient Credits",
-			"reason": "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning.",
-		})
+	granted, accessKind, err := payRepo.CheckAccess(c.Request.Context(), userID, mint, isAPI)
+	if err != nil {
+		log.Error().Err(err).Str("user", userID).Msg("Access check failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal auth error"})
 		return
 	}
 
+	if !granted {
+		if isAPI {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":  "Access Denied",
+				"reason": "Developer API access requires an active Pro/Ultra/Enterprise subscription and available quota.",
+			})
+		} else {
+			c.JSON(http.StatusPaymentRequired, gin.H{
+				"error":  "Insufficient Credits",
+				"reason": "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning.",
+			})
+		}
+		return
+	}
+
+	// Perform the actual work (AI Analysis)
 	resp, err := repo.GetAnalysis(c.Request.Context(), mint, true)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		// ANALYSIS FAILED: Atomic Quota Recovery — we do NOT call CommitUsage
+		log.Warn().Err(err).Str("mint", mint).Msg("Analysis failed, quota NOT deducted")
+		c.JSON(http.StatusNotFound, gin.H{"error": "Analysis failed or not found"})
 		return
 	}
+
+	// Success: GOAL ACHIEVED — NOW we commit the usage
+	payRepo.CommitUsage(c.Request.Context(), userID, accessKind, mint)
 
 	// Gated Response Logic (Succcess)
 	c.JSON(http.StatusOK, gin.H{
