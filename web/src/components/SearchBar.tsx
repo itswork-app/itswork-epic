@@ -10,7 +10,9 @@ export function SearchBar() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ 
-    score: number; 
+    score: number;
+    verdict: string;
+    reason?: string;
     teaser?: boolean;
     enrichment?: {
       creator_reputation: string;

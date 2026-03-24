@@ -43,6 +43,8 @@ func SetupRouter(
 	r.Use(otelgin.Middleware("itswork-ingestor"))
 
 	// CORS Middleware (PR-PRODUCTION-READY)
+	r.Use(func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
 		// Domain Selection Logic (Regex supported for subdomains)
 		allowedOrigin := "https://itswork.app" // Default
 		isAllowed := false
@@ -65,6 +67,7 @@ func SetupRouter(
 		} else if origin == "" {
 			// Allow non-browser (e.g. curl/postman) or same-origin
 			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		}
 
 		corsHeaders := "Content-Type, Content-Length, Accept-Encoding, " +
 			"X-CSRF-Token, Authorization, accept, origin, " +
