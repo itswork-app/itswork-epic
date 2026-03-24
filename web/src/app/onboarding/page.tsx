@@ -26,7 +26,13 @@ export default function OnboardingPage() {
       });
 
       if (res.ok) {
-        router.push(role === "trader" ? "/dashboard/trader" : "/dashboard/developer");
+        // Domain shift logic (PR-NEXUS-SUBDOMAIN-ORCHESTRATION)
+        const isProd = window.location.hostname !== 'localhost';
+        const targetUrl = role === 'trader' 
+          ? (isProd ? 'https://trader.itswork.app' : 'http://localhost:3000') 
+          : (isProd ? 'https://dev.itswork.app' : 'http://localhost:3000');
+        
+        window.location.href = targetUrl;
       }
     } catch (err) {
       console.error("Role selection failed:", err);

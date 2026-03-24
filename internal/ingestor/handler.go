@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"regexp"
 
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
@@ -44,17 +45,25 @@ func SetupRouter(
 	// CORS Middleware (PR-PRODUCTION-READY)
 	r.Use(func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		allowedOrigins := map[string]bool{
-			"http://localhost:3000":   true,
-			"https://itswork.app":     true,
-			"https://www.itswork.app": true,
+		// Domain Selection Logic (Regex supported for subdomains)
+		allowedOrigin := "https://itswork.app" // Default
+		isAllowed := false
+
+		// Local Development
+		if origin == "http://localhost:3000" {
+			allowedOrigin = origin
+			isAllowed = true
+		} else if origin != "" {
+			// Production Subdomains (Regex: *.itswork.app)
+			matched, _ := regexp.MatchString(`^https?://.*\.itswork\.app$`, origin)
+			if matched || origin == "https://itswork.app" {
+				allowedOrigin = origin
+				isAllowed = true
+			}
 		}
 
-		if allowedOrigins[origin] {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-		} else if origin == "" {
-			// Allow non-browser (e.g. curl/postman) or same-origin
-			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		if isAllowed {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		}
 
 		corsHeaders := "Content-Type, Content-Length, Accept-Encoding, " +
