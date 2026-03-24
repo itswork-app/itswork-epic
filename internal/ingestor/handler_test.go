@@ -360,8 +360,7 @@ func TestTokenAnalysisHandler_TeaserMode(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "teaser")
-	assert.NotContains(t, w.Body.String(), "creator_reputation") // Scrubbed
-	assert.NotContains(t, w.Body.String(), "insider_risk")       // Scrubbed
+	assert.Contains(t, w.Body.String(), "REDACTED") // Fields are REDACTED, not removed
 }
 
 func TestTokenAnalysisHandler_APIKeyBlocked(t *testing.T) {

@@ -127,7 +127,9 @@ func (r *PaymentRepository) UpdatePaymentStatus(ctx context.Context, reference, 
 // CheckAccess (Audit PR-FIX-V1) differentiates between checking eligibility and committing usage.
 // Returns (grant, kind, error). kind is used by CommitUsage to finalize the charge.
 func (r *PaymentRepository) CheckAccess(ctx context.Context, userID, mint string, isAPI bool) (bool, string, error) {
-	_ = r.InitUserCredits(ctx, userID)
+	if userID != "" && userID != "guest_teaser" {
+		_ = r.InitUserCredits(ctx, userID)
+	}
 
 	// 1. Cache Check
 	cacheKey := fmt.Sprintf("payment_verified:%s:%s", userID, mint)
