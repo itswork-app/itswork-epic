@@ -35,6 +35,7 @@ type App struct {
 	BrainClient *processor.BrainClient
 	Sub         *processor.Subscriber
 	PayRepo     *repository.PaymentRepository
+	PortalSub   *processor.PortalSubscriber
 	Server      *http.Server
 	Port        string
 }
@@ -88,7 +89,8 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 	}
 
 	payService := pay.NewPayService(redisClient)
-	router := ingestor.SetupRouter(pub, repo, payRepo, payService)
+	portalSub := processor.NewPortalSubscriber(redisClient, brainClient)
+	router := ingestor.SetupRouter(pub, repo, payRepo, payService, portalSub)
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: router,
@@ -101,6 +103,7 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 		BrainClient: brainClient,
 		Sub:         sub,
 		PayRepo:     payRepo,
+		PortalSub:   portalSub,
 		Server:      srv,
 		Port:        port,
 	}, nil
@@ -108,6 +111,12 @@ func SetupApp(opts ...AppOptions) (*App, error) {
 
 func (a *App) Run() {
 	go a.Sub.Start()
+	go func() {
+		ctx := context.Background() // Use an appropriate context if needed
+		if err := a.PortalSub.Start(ctx); err != nil {
+			log.Error().Err(err).Msg("PortalSubscriber exited with error")
+		}
+	}()
 
 	go func() {
 		log.Info().Str("port", a.Port).Msg("Server listening on port")

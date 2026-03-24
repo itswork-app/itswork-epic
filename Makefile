@@ -1,6 +1,6 @@
 # ItsWork-epic Industrial Makefile
 
-.PHONY: test coverage lint build clean run
+.PHONY: test coverage lint build clean run proto
 
 # Default target
 all: lint test build
@@ -38,3 +38,9 @@ clean:
 
 run: build
 	./bin/ingestor
+
+proto:
+	@echo "Generating gRPC Proto stubs (Go & Python)..."
+	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative api/proto/CONTRACTS.proto
+	python3 -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. api/proto/CONTRACTS.proto
+	@echo "Proto regenerated. Master Blueprint Read & Verified."

@@ -17,6 +17,8 @@ message TokenRequest {
   bool funding_source_check_passed = 6;
   bool is_renounced = 7;
   bool has_socials = 8;
+  float bonding_progress = 9;
+  float trade_velocity = 10;
 }
 
 message VerdictResponse { 
