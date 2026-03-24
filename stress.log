@@ -1,0 +1,96 @@
+{"level":"info","addr":"127.0.0.1:36961","time":"2026-03-24T14:04:33+07:00","message":"Mock Redis started"}
+{"level":"info","time":"2026-03-24T14:04:33+07:00","message":"Mock Postgres (sqlmock) started"}
+{"level":"info","time":1774335873,"message":"Successfully connected to Upstash Redis"}
+{"level":"error","error":"pubsub(publisher): credentials: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information","time":1774335873,"message":"Failed to create PubSub client"}
+{"level":"warn","time":1774335873,"message":"SENTRY_DSN not set, skipping Sentry init"}
+{"level":"info","time":1774335873,"message":"OpenTelemetry Tracer Provider initialized (Stdout)"}
+{"level":"info","target":"localhost:50051","time":1774335873,"message":"Connecting to Python AI Brain via gRPC..."}
+{"level":"warn","error":"pubsub(publisher): credentials: could not find default credentials. See https://cloud.google.com/docs/authentication/external/set-up-adc for more information","time":1774335873,"message":"Subscriber init failed - normal in restricted test envs"}
+{"level":"warn","time":1774335873,"message":"CLERK_SECRET_KEY not set"}
+{"level":"warn","time":1774335873,"message":"Subscriber is nil, skipping Receive loop (likely in test mode)"}
+{"level":"info","url":"wss://pumpportal.fun/api/data","time":1774335873,"message":"Connecting to Pump Portal WebSocket..."}
+{"level":"info","port":"8080","time":1774335873,"message":"Server listening on port"}
+{"level":"info","time":1774335873,"message":"🚀 Mock Stress Server is LIVE on :8080"}
+{"level":"info","time":1774335873,"message":"Ready for 'The Proving Grounds' stress test."}
+{"level":"error","error":"listen tcp :8080: bind: address already in use","time":1774335873,"message":"Failed to listen and serve"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335894,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335896,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335896,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335897,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335900,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335901,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335902,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335917,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335917,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335917,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335917,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335918,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335930,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335930,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335930,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335930,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335942,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335949,"message":"Failed to unmarshal portal message"}
+{"level":"info","mint":"6LjPGvzHkskUFCKCDwJvhv4asMT5AJPZdubQLcsQbonk","creator":"","time":1774335954,"message":"Detik ke-0: New Token Detected via Pump Portal"}
+{"level":"error","error":"rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:50051: connect: connection refused\"","mint":"6LjPGvzHkskUFCKCDwJvhv4asMT5AJPZdubQLcsQbonk","time":1774335954,"message":"gRPC AnalyzeToken failed"}
+{"level":"warn","error":"rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:50051: connect: connection refused\"","mint":"6LjPGvzHkskUFCKCDwJvhv4asMT5AJPZdubQLcsQbonk","time":1774335954,"message":"Initial Sniper Analysis failed (relying on trade metrics)"}
+{"level":"info","mint":"6LjPGvzHkskUFCKCDwJvhv4asMT5AJPZdubQLcsQbonk","time":1774335955,"message":"ALPHA SIGNAL: Creator is Safe. Adding to potential_alpha_tokens."}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335961,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335965,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335965,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335965,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335965,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335982,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335983,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335993,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335993,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774335996,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336020,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336022,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336051,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336062,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336068,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336080,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336085,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336086,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336088,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336096,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336097,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336097,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336097,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336097,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336098,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336098,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336104,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336104,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336105,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336105,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336115,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336115,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336115,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336121,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336129,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336129,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336130,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336138,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336142,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336143,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336143,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336143,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336147,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336156,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336159,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336159,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336159,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336159,"message":"Failed to unmarshal portal message"}
+{"level":"info","mint":"3b6abGn34jX4jk3eHm9ScdG9gQ7vJRUosuxemAApbonk","creator":"","time":1774336166,"message":"Detik ke-0: New Token Detected via Pump Portal"}
+{"level":"error","error":"rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:50051: connect: connection refused\"","mint":"3b6abGn34jX4jk3eHm9ScdG9gQ7vJRUosuxemAApbonk","time":1774336166,"message":"gRPC AnalyzeToken failed"}
+{"level":"warn","error":"rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:50051: connect: connection refused\"","mint":"3b6abGn34jX4jk3eHm9ScdG9gQ7vJRUosuxemAApbonk","time":1774336166,"message":"Initial Sniper Analysis failed (relying on trade metrics)"}
+{"level":"info","mint":"3b6abGn34jX4jk3eHm9ScdG9gQ7vJRUosuxemAApbonk","time":1774336166,"message":"ALPHA SIGNAL: Creator is Safe. Adding to potential_alpha_tokens."}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336179,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336180,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336180,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336180,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336184,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336188,"message":"Failed to unmarshal portal message"}
+{"level":"error","error":"json: invalid use of ,string struct tag, trying to unmarshal unquoted value into float32","time":1774336189,"message":"Failed to unmarshal portal message"}
