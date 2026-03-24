@@ -3,15 +3,19 @@ package ingestor
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 
+	"itswork.app/internal/processor"
 	"itswork.app/internal/repository"
 )
 
@@ -31,7 +35,7 @@ func TestHeliusWebhookHandler_Valid(t *testing.T) {
 	pub := NewPublisher()
 	defer pub.Shutdown()
 
-	router := SetupRouter(pub, nil, nil, nil)
+	router := SetupRouter(pub, nil, nil, nil, nil)
 
 	body := []byte(`{"transaction": "sol123", "type": "transfer", "amount": 100}`)
 	req, _ := http.NewRequest(http.MethodPost, "/webhook/helius", bytes.NewBuffer(body))
@@ -47,7 +51,7 @@ func TestHeliusWebhookHandler_Valid(t *testing.T) {
 
 func TestHealthCheck(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := SetupRouter(nil, nil, nil, nil) // Publisher and Repo not needed for health
+	router := SetupRouter(nil, nil, nil, nil, nil) // Publisher and Repo not needed for health
 
 	req, _ := http.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -66,7 +70,7 @@ func TestHeliusWebhookHandler_Backpressure(t *testing.T) {
 	// Fill the channel
 	pub.PublishChan <- []byte("initial")
 
-	router := SetupRouter(pub, nil, nil, nil)
+	router := SetupRouter(pub, nil, nil, nil, nil)
 
 	body := []byte(`{"data": "second"}`)
 	req, _ := http.NewRequest(http.MethodPost, "/webhook/helius", bytes.NewBuffer(body))
@@ -89,7 +93,7 @@ func TestHeliusWebhookHandler_BodyError(t *testing.T) {
 	pub := NewPublisher()
 	defer pub.Shutdown()
 
-	router := SetupRouter(pub, nil, nil, nil)
+	router := SetupRouter(pub, nil, nil, nil, nil)
 
 	req, _ := http.NewRequest(http.MethodPost, "/webhook/helius", errorReader{})
 	w := httptest.NewRecorder()
@@ -133,7 +137,7 @@ func TestTokenAnalysisHandler_PaidSuccess(t *testing.T) {
 		WithArgs("mint123").
 		WillReturnRows(sqlmock.NewRows([]string{"verdict", "rug_score", "reason"}).AddRow("SAFE", 90, "LP Burned"))
 
-	router := SetupRouter(nil, repo, payRepo, nil)
+	router := SetupRouter(nil, repo, payRepo, nil, nil)
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
 	req.Header.Set("X-User-Id", "user123")
@@ -162,7 +166,7 @@ func TestTokenAnalysisHandler_Unpaid(t *testing.T) {
 	mock.ExpectRollback()
 	mock.ExpectQuery("SELECT COUNT(.*) FROM payments").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-	router := SetupRouter(nil, repo, payRepo, nil)
+	router := SetupRouter(nil, repo, payRepo, nil, nil)
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
 	req.Header.Set("X-User-Id", "user123")
@@ -191,7 +195,7 @@ func TestTokenAnalysisHandler_NotFound(t *testing.T) {
 		WithArgs("mint404").
 		WillReturnError(sql.ErrNoRows)
 
-	router := SetupRouter(nil, repo, payRepo, nil)
+	router := SetupRouter(nil, repo, payRepo, nil, nil)
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint404", nil)
 	req.Header.Set("X-User-Id", "user123")
@@ -208,4 +212,52 @@ func TestTokenAnalysisHandler_MissingMint(t *testing.T) {
 	// Don't set params (mint is empty)
 	TokenAnalysisHandler(c, nil, nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSniperVerdictHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("NotFound", func(t *testing.T) {
+		portalSub := processor.NewPortalSubscriber(nil, nil)
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Params = []gin.Param{{Key: "mint", Value: "missing"}}
+
+		SniperVerdictHandler(c, portalSub)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("Success", func(t *testing.T) {
+		mr, _ := miniredis.Run()
+		defer mr.Close()
+		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+		portalSub := processor.NewPortalSubscriber(rdb, nil)
+
+		// Manually inject state for testing (simulating a create event)
+		pm := processor.PortalMessage{
+			TxType: "create",
+			Mint:   "snipe123",
+			Trader: "creator123",
+		}
+
+		// We can't call private handleMessage, but we can call Start in a limited way or
+		// if we make handleMessage public. Wait, I made it public in my thought but wrote it as private?
+		// Let me check portal_subscriber.go.
+
+		// It's public: func (s *PortalSubscriber) HandleMessage(pm PortalMessage)
+		portalSub.HandleMessage(pm)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Params = []gin.Param{{Key: "mint", Value: "snipe123"}}
+
+		SniperVerdictHandler(c, portalSub)
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var resp map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		assert.NoError(t, err)
+		assert.Equal(t, "snipe123", resp["mint"])
+	})
 }

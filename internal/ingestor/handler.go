@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"itswork.app/internal/pay"
+	"itswork.app/internal/processor"
 	"itswork.app/internal/repository"
 
 	sentrygin "github.com/getsentry/sentry-go/gin"
@@ -22,6 +23,7 @@ func SetupRouter(
 	repo *repository.TokenRepository,
 	payRepo *repository.PaymentRepository,
 	payService *pay.PayService,
+	portalSub *processor.PortalSubscriber,
 ) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -62,9 +64,39 @@ func SetupRouter(
 		api.POST("/api/v1/pay/subscribe", func(c *gin.Context) {
 			CreateSubscriptionPaymentHandler(c, payService, payRepo)
 		})
+		// --- SNIPER ENGINE: LOW LATENCY ---
+		api.GET("/sniper/verdict/:mint", func(c *gin.Context) {
+			SniperVerdictHandler(c, portalSub)
+		})
 	}
 
 	return r
+}
+
+func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber) {
+	mint := c.Param("mint")
+	if mint == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mint"})
+		return
+	}
+
+	state, ok := portalSub.GetSniperVerdict(mint)
+	if !ok {
+		// Attempt to fetch from Redis if not in local map
+		// But instructions say < 50ms, usually local map or Redis is fine.
+		// The subscriber already pushes to Redis, so let's stick to the subscriber's GetSniperVerdict or direct Redis.
+		c.JSON(http.StatusNotFound, gin.H{"error": "Token not being tracked or not found in Pump Portal stream"})
+		return
+	}
+
+	// Minimalist High-Speed JSON Output
+	c.JSON(http.StatusOK, gin.H{
+		"mint":             state.Mint,
+		"bonding_progress": state.LastProgress,
+		"dev_sniped":       state.DevSniped,
+		"trade_velocity":   state.TradesPerMin,
+		"is_momentum":      state.IsHighMomentum,
+	})
 }
 
 // HeliusWebhookHandler processes incoming webhooks immediately passing to channels.

@@ -28,8 +28,6 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
 
         logging.info(f"Received AnalyzeToken request => mint: {mint_address}, creator: {creator_address}")
 
-        logging.info(f"Received AnalyzeToken request => mint: {mint_address}, creator: {creator_address}")
-
         # Load configurable thresholds from environment variables
         min_wallet_age_hours = int(os.environ.get("MIN_WALLET_AGE_HOURS", 24))
         max_holder_concentration = float(os.environ.get("MAX_HOLDER_CONCENTRATION_PERCENT", 50.0))
@@ -41,6 +39,8 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
         funding_check_passed = request.funding_source_check_passed
         is_renounced = request.is_renounced
         has_socials = request.has_socials
+        bonding_progress = request.bonding_progress
+        trade_velocity = request.trade_velocity
 
         # Base score
         score = 100
@@ -76,6 +76,16 @@ class IntelligenceService(CONTRACTS_pb2_grpc.IntelligenceServiceServicer):
             score -= 20
             reasons.append("No social metadata (X/Telegram) found (-20)")
 
+        # 7. Sniper Engine Metrics: Bonding Curve Momentum
+        if bonding_progress >= 50.0:
+            score += 15
+            reasons.append(f"HIGH MOMENTUM: {bonding_progress:.1f}% Bonding Curve (+15)")
+
+        # 8. Organic Growth vs Bot Velocity
+        if trade_velocity > 50.0:
+            # Very high velocity might be bot wash trading, but user wants to reward momentum
+            score += 10
+            reasons.append(f"High trade velocity: {trade_velocity:.1f} tpm (+10)")
         # Determine Verdict
         if score >= 80:
             verdict = "SAFE"

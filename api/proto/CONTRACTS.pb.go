@@ -31,6 +31,8 @@ type TokenRequest struct {
 	FundingSourceCheckPassed         bool                   `protobuf:"varint,6,opt,name=funding_source_check_passed,json=fundingSourceCheckPassed,proto3" json:"funding_source_check_passed,omitempty"`
 	IsRenounced                      bool                   `protobuf:"varint,7,opt,name=is_renounced,json=isRenounced,proto3" json:"is_renounced,omitempty"`
 	HasSocials                       bool                   `protobuf:"varint,8,opt,name=has_socials,json=hasSocials,proto3" json:"has_socials,omitempty"`
+	BondingProgress                  float32                `protobuf:"fixed32,9,opt,name=bonding_progress,json=bondingProgress,proto3" json:"bonding_progress,omitempty"`
+	TradeVelocity                    float32                `protobuf:"fixed32,10,opt,name=trade_velocity,json=tradeVelocity,proto3" json:"trade_velocity,omitempty"`
 	unknownFields                    protoimpl.UnknownFields
 	sizeCache                        protoimpl.SizeCache
 }
@@ -121,6 +123,20 @@ func (x *TokenRequest) GetHasSocials() bool {
 	return false
 }
 
+func (x *TokenRequest) GetBondingProgress() float32 {
+	if x != nil {
+		return x.BondingProgress
+	}
+	return 0
+}
+
+func (x *TokenRequest) GetTradeVelocity() float32 {
+	if x != nil {
+		return x.TradeVelocity
+	}
+	return 0
+}
+
 type VerdictResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Score         int32                  `protobuf:"varint,1,opt,name=score,proto3" json:"score,omitempty"`
@@ -185,7 +201,7 @@ var File_api_proto_CONTRACTS_proto protoreflect.FileDescriptor
 
 const file_api_proto_CONTRACTS_proto_rawDesc = "" +
 	"\n" +
-	"\x19api/proto/CONTRACTS.proto\x12\x14itswork.intelligence\"\x86\x03\n" +
+	"\x19api/proto/CONTRACTS.proto\x12\x14itswork.intelligence\"\xd8\x03\n" +
 	"\fTokenRequest\x12!\n" +
 	"\fmint_address\x18\x01 \x01(\tR\vmintAddress\x12'\n" +
 	"\x0fcreator_address\x18\x02 \x01(\tR\x0ecreatorAddress\x127\n" +
@@ -196,7 +212,10 @@ const file_api_proto_CONTRACTS_proto_rawDesc = "" +
 	"\x1bfunding_source_check_passed\x18\x06 \x01(\bR\x18fundingSourceCheckPassed\x12!\n" +
 	"\fis_renounced\x18\a \x01(\bR\visRenounced\x12\x1f\n" +
 	"\vhas_socials\x18\b \x01(\bR\n" +
-	"hasSocials\"Y\n" +
+	"hasSocials\x12)\n" +
+	"\x10bonding_progress\x18\t \x01(\x02R\x0fbondingProgress\x12%\n" +
+	"\x0etrade_velocity\x18\n" +
+	" \x01(\x02R\rtradeVelocity\"Y\n" +
 	"\x0fVerdictResponse\x12\x14\n" +
 	"\x05score\x18\x01 \x01(\x05R\x05score\x12\x18\n" +
 	"\averdict\x18\x02 \x01(\tR\averdict\x12\x16\n" +

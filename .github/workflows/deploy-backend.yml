@@ -19,6 +19,7 @@ env:
   REGION: ${{ secrets.GCP_REGION }}
   SERVICE_NAME: itswork-ingestor
   REPO_NAME: cloud-run-source-deploy
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   deploy:

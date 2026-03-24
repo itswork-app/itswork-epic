@@ -270,3 +270,57 @@ func TestIsProSubscriber_CacheHit(t *testing.T) {
 	active := repo.IsProSubscriber(ctx, "user123")
 	assert.True(t, active)
 }
+func TestIsProSubscriber_CacheMiss(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	mr, rdb := setupTestRedis(t)
+	defer mr.Close()
+
+	repo := NewPaymentRepository(db, rdb)
+	ctx := context.Background()
+
+	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
+		WithArgs("user_pro").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	active := repo.IsProSubscriber(ctx, "user_pro")
+	assert.True(t, active)
+
+	// Verify it was cached
+	val, _ := rdb.Get(ctx, "sub_active:user_pro").Result()
+	assert.Equal(t, "true", val)
+}
+
+func TestUpdatePaymentStatus_Error(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	mock.ExpectQuery("UPDATE payments").
+		WithArgs("success", "ref-err").
+		WillReturnError(sql.ErrNoRows)
+
+	err = repo.UpdatePaymentStatus(ctx, "ref-err", "success")
+	assert.Error(t, err)
+}
+
+func TestActivateSubscription_Error(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	assert.NoError(t, err)
+	defer db.Close()
+
+	repo := NewPaymentRepository(db, nil)
+	ctx := context.Background()
+
+	mock.ExpectExec("INSERT INTO user_subscriptions").
+		WithArgs("user123", "active", 30).
+		WillReturnError(sql.ErrConnDone)
+
+	err = repo.ActivateSubscription(ctx, "user123", "active", 30)
+	assert.Error(t, err)
+}
