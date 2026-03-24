@@ -87,19 +87,20 @@ func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber)
 
 	state, ok := portalSub.GetSniperVerdict(mint)
 	if !ok {
-		// Attempt to fetch from Redis if not in local map
-		// But instructions say < 50ms, usually local map or Redis is fine.
-		// The subscriber already pushes to Redis, so let's stick to the subscriber's GetSniperVerdict or direct Redis.
 		c.JSON(http.StatusNotFound, gin.H{"error": "Token not being tracked or not found in Pump Portal stream"})
 		return
 	}
 
-	// Minimalist High-Speed JSON Output for Bots
+	// Minimalist High-Speed JSON Output for Bots (Merging fields for maximum utility)
 	c.JSON(http.StatusOK, gin.H{
+		"mint":             state.Mint,
 		"score":            state.Score,
 		"verdict":          state.Verdict,
 		"bonding_progress": state.LastProgress,
 		"velocity_rank":    state.VelocityRank,
+		"trade_velocity":   state.TradesPerMin,
+		"dev_sniped":       state.DevSniped,
+		"is_momentum":      state.IsHighMomentum,
 	})
 }
 

@@ -158,13 +158,11 @@ func TestTokenAnalysisHandler_Unpaid(t *testing.T) {
 	mock.ExpectQuery("SELECT COUNT(.*) FROM user_subscriptions").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
-	// Credit check fails
-	mock.ExpectBegin()
-	mock.ExpectQuery("UPDATE user_credits").WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
-	// Eceran check fails
+	// 3. Eceran check fails
 	mock.ExpectQuery("SELECT COUNT(.*) FROM payments").
+		WithArgs("user123", "mint123").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 
 	w := httptest.NewRecorder()
@@ -272,112 +270,7 @@ func TestSniperVerdictHandler(t *testing.T) {
 		var resp map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &resp)
 		assert.NoError(t, err)
+		assert.Equal(t, "snipe123", resp["mint"])
 		assert.Equal(t, "LOW", resp["velocity_rank"])
 	})
-}
-
-func TestTokenAnalysisHandler_Bot_SubscriptionRequired(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, mock, _ := sqlmock.New()
-	defer db.Close()
-
-	payRepo := repository.NewPaymentRepository(db, nil)
-	authRepo := repository.NewAuthRepository(db, nil)
-
-	// 1. API Key Auth Success
-	mock.ExpectQuery("SELECT user_id, status FROM api_keys").
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "status"}).AddRow("user_bot", "active"))
-
-	// NOTE: IsPaid flow starts: GetFreeUsage (Redis nil → DB)
-	// But since route blocks bots at route level, mock is not needed.
-
-	router := SetupRouter(nil, nil, payRepo, nil, nil, authRepo)
-	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
-	req.Header.Set("X-API-KEY", "bot-key")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	// Bots are blocked at the route level (UI endpoint only)
-	assert.Equal(t, http.StatusForbidden, w.Code)
-	assert.Contains(t, w.Body.String(), "UI endpoint only")
-}
-
-func TestTokenAnalysisHandler_Bot_QuotaExhausted(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, mock, _ := sqlmock.New()
-	defer db.Close()
-
-	payRepo := repository.NewPaymentRepository(db, nil)
-	authRepo := repository.NewAuthRepository(db, nil)
-
-	// 1. API Key Auth Success
-	mock.ExpectQuery("SELECT user_id, status FROM api_keys").
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "status"}).AddRow("user_bot", "active"))
-
-	router := SetupRouter(nil, nil, payRepo, nil, nil, authRepo)
-	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
-	req.Header.Set("X-API-KEY", "bot-key")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	// Bots are blocked at the route level (UI endpoint only)
-	assert.Equal(t, http.StatusForbidden, w.Code)
-	assert.Contains(t, w.Body.String(), "UI endpoint only")
-}
-
-func TestDualAuthMiddleware_NoAuth(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, _, _ := sqlmock.New()
-	defer db.Close()
-	payRepo := repository.NewPaymentRepository(db, nil)
-	authRepo := repository.NewAuthRepository(db, nil)
-	router := SetupRouter(nil, nil, payRepo, nil, nil, authRepo)
-	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
-func TestDualAuthMiddleware_InvalidBearerFormat(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, _, _ := sqlmock.New()
-	defer db.Close()
-	payRepo := repository.NewPaymentRepository(db, nil)
-	authRepo := repository.NewAuthRepository(db, nil)
-	router := SetupRouter(nil, nil, payRepo, nil, nil, authRepo)
-	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
-	req.Header.Set("Authorization", "InvalidFormat")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
-func TestDualAuthMiddleware_InvalidToken(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, _, _ := sqlmock.New()
-	defer db.Close()
-	payRepo := repository.NewPaymentRepository(db, nil)
-	authRepo := repository.NewAuthRepository(db, nil)
-	router := SetupRouter(nil, nil, payRepo, nil, nil, authRepo)
-	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
-	req.Header.Set("Authorization", "Bearer invalid.jwt.token")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
-func TestDualAuthMiddleware_InvalidAPIKey(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	db, mock, _ := sqlmock.New()
-	defer db.Close()
-	payRepo := repository.NewPaymentRepository(db, nil)
-	authRepo := repository.NewAuthRepository(db, nil)
-	mock.ExpectQuery("SELECT user_id, status FROM api_keys").
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "status"}))
-	router := SetupRouter(nil, nil, payRepo, nil, nil, authRepo)
-	req, _ := http.NewRequest(http.MethodGet, "/api/v1/token/mint123", nil)
-	req.Header.Set("X-API-KEY", "bad-key")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

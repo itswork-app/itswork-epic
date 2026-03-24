@@ -114,7 +114,6 @@ func (s *PortalSubscriber) connectAndListen(ctx context.Context) error {
 			}
 		}
 	}()
-
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -174,7 +173,6 @@ func (s *PortalSubscriber) handleNewToken(pm PortalMessage) {
 			log.Warn().Err(err).Str("mint", pm.Mint).Msg("Initial Sniper Analysis failed (relying on trade metrics)")
 		}
 	}()
-
 	// Push to Redis immediately
 	s.cacheState(pm.Mint, state)
 }
@@ -209,8 +207,6 @@ func (s *PortalSubscriber) handleTrade(pm PortalMessage) {
 		state.TradesPerMin = float32(float64(state.TradeCount) / duration.Minutes())
 		if state.TradesPerMin > 100 {
 			state.VelocityRank = "STORM"
-		} else if state.TradesPerMin > 30 {
-			state.VelocityRank = "MEDIUM"
 		} else {
 			state.VelocityRank = "LOW"
 		}
