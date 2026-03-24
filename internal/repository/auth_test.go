@@ -87,4 +87,57 @@ func TestAuthRepository(t *testing.T) {
 		err := repo.SaveAPIKey(ctx, "user2", "hash2", "test-label2")
 		assert.Error(t, err)
 	})
+
+	t.Run("SaveUserRole", func(t *testing.T) {
+		mock.ExpectExec("INSERT INTO users").
+			WithArgs("user1", "trader").
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		err := repo.SaveUserRole(ctx, "user1", "trader")
+		assert.NoError(t, err)
+	})
+
+	t.Run("SyncUser", func(t *testing.T) {
+		mock.ExpectExec("INSERT INTO users").
+			WithArgs("user1").
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		err := repo.SyncUser(ctx, "user1")
+		assert.NoError(t, err)
+	})
+
+	t.Run("GetUserRole_Found", func(t *testing.T) {
+		mock.ExpectQuery("SELECT role FROM users").
+			WithArgs("user1").
+			WillReturnRows(sqlmock.NewRows([]string{"role"}).AddRow("trader"))
+
+		role, err := repo.GetUserRole(ctx, "user1")
+		assert.NoError(t, err)
+		assert.Equal(t, "trader", role)
+	})
+
+	t.Run("SaveUserRole_Error", func(t *testing.T) {
+		mock.ExpectExec("INSERT INTO users").
+			WillReturnError(sql.ErrConnDone)
+
+		err := repo.SaveUserRole(ctx, "user-err", "trader")
+		assert.Error(t, err)
+	})
+
+	t.Run("SyncUser_Error", func(t *testing.T) {
+		mock.ExpectExec("INSERT INTO users").
+			WillReturnError(sql.ErrConnDone)
+
+		err := repo.SyncUser(ctx, "user-err")
+		assert.Error(t, err)
+	})
+
+	t.Run("GetUserRole_Error", func(t *testing.T) {
+		mock.ExpectQuery("SELECT role FROM users").
+			WillReturnError(sql.ErrConnDone)
+
+		role, err := repo.GetUserRole(ctx, "user-err")
+		assert.Error(t, err)
+		assert.Empty(t, role)
+	})
 }
