@@ -11,13 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupTestRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
-	mr, err := miniredis.Run()
-	assert.NoError(t, err)
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	return mr, rdb
-}
-
 func TestSavePayment(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
