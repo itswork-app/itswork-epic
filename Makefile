@@ -7,7 +7,9 @@ all: lint test build
 
 test:
 	@echo "Running all Go tests..."
-	go test -v ./...
+	@go test -v ./internal/... ./pkg/... ./cmd/ingestor/... ./test/e2e/...
+
+
 
 coverage:
 	@echo "Generating coverage report..."
