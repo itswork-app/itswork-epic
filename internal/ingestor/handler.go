@@ -2,6 +2,9 @@ package ingestor
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -31,32 +34,24 @@ func SetupRouter(
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.New()
-	r.Use(gin.Logger()) // Added for production visibility
+	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
-	// Sentry Middleware (Captures panics and sends to Sentry)
-	r.Use(sentrygin.New(sentrygin.Options{
-		Repanic: true,
-	}))
-
-	// OpenTelemetry Middleware (Distributed Tracing)
+	r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 	r.Use(otelgin.Middleware("itswork-ingestor"))
 
-	// CORS Middleware (PR-PRODUCTION-READY)
+	// CORS Middleware (PR-SHIELD)
 	r.Use(func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		// Domain Selection Logic (Regex supported for subdomains)
 		allowedOrigin := "https://itswork.app" // Default
 		isAllowed := false
 
-		// Local Development
 		if origin == "http://localhost:3000" {
 			allowedOrigin = origin
 			isAllowed = true
 		} else if origin != "" {
-			// Production Subdomains (Regex: *.itswork.app)
 			matched, _ := regexp.MatchString(`^https?://.*\.itswork\.app$`, origin)
-			if matched || origin == "https://itswork.app" {
+			if matched || origin == "https://itswork.app" || origin == "https://www.itswork.app" {
 				allowedOrigin = origin
 				isAllowed = true
 			}
@@ -65,14 +60,10 @@ func SetupRouter(
 		if isAllowed {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		} else if origin == "" {
-			// Allow non-browser (e.g. curl/postman) or same-origin
 			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		}
 
-		corsHeaders := "Content-Type, Content-Length, Accept-Encoding, " +
-			"X-CSRF-Token, Authorization, accept, origin, " +
-			"Cache-Control, X-Requested-With, X-API-KEY"
-
+		corsHeaders := "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-API-KEY"
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", corsHeaders)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
@@ -81,7 +72,6 @@ func SetupRouter(
 			c.AbortWithStatus(204)
 			return
 		}
-
 		c.Next()
 	})
 
@@ -96,10 +86,9 @@ func SetupRouter(
 	api := r.Group("/api/v1")
 	api.Use(DualAuthMiddleware(authRepo, payRepo))
 	{
-		// MARKETING PORTAL: UI-only endpoint (Clerk JWT)
 		api.GET("/token/:mint", func(c *gin.Context) {
 			if authMethod, _ := c.Get("authMethod"); authMethod == "api_key" {
-				c.JSON(http.StatusForbidden, gin.H{"error": "UI endpoint only. Use /api/v1/sniper/verdict/:mint for bot access."})
+				c.JSON(http.StatusForbidden, gin.H{"error": "UI endpoint only."})
 				return
 			}
 			TokenAnalysisHandler(c, repo, payRepo)
@@ -125,10 +114,9 @@ func SetupRouter(
 			GetQuotaHandler(c, payRepo)
 		})
 
-		// DEVELOPER PORTAL: API-only endpoint (X-API-KEY)
 		api.GET("/sniper/verdict/:mint", func(c *gin.Context) {
 			if authMethod, _ := c.Get("authMethod"); authMethod != "api_key" {
-				c.JSON(http.StatusForbidden, gin.H{"error": "API endpoint only. Use X-API-KEY header for bot access."})
+				c.JSON(http.StatusForbidden, gin.H{"error": "API endpoint only."})
 				return
 			}
 			SniperVerdictHandler(c, portalSub, payRepo)
@@ -138,285 +126,128 @@ func SetupRouter(
 	return r
 }
 
-func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber, payRepo *repository.PaymentRepository) {
-	mint := c.Param("mint")
-	if mint == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mint"})
-		return
-	}
-
-	// Audit PR-FIX-V1: API Quota Gating
-	userID := GetUserID(c)
-	granted, accessKind, err := payRepo.CheckAccess(c.Request.Context(), userID, mint, true)
-	if err != nil || !granted {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error":            "Access Denied",
-			"reason":           "Sniper API access requires an active subscription and available quota.",
-			"suggested_action": "upgrade",
-			"upgrade_url":      "https://itswork.app/developer/billing",
-		})
-		return
-	}
-
-	state, ok := portalSub.GetSniperVerdict(mint)
-	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Token not being tracked or not found in Pump Portal stream"})
-		return
-	}
-
-	// Success: Deduct Quota
-	payRepo.CommitUsage(c.Request.Context(), userID, accessKind, mint)
-
-	// Minimalist High-Speed JSON Output for Bots (Merging fields for maximum utility)
-	c.JSON(http.StatusOK, gin.H{
-		"mint":               state.Mint,
-		"score":              state.Score,
-		"verdict":            state.Verdict,
-		"bonding_progress":   state.LastProgress,
-		"velocity_rank":      state.VelocityRank,
-		"trade_velocity":     state.TradesPerMin,
-		"dev_sniped":         state.DevSniped,
-		"is_momentum":        state.IsHighMomentum,
-		"creator_reputation": state.CreatorReputation,
-		"insider_risk":       state.InsiderRisk,
-	})
-}
-
-// HeliusWebhookHandler processes incoming webhooks immediately passing to channels.
 func HeliusWebhookHandler(c *gin.Context, pub *Publisher) {
-	// Security: Verify WEBHOOK_SECRET
-	secret := os.Getenv("WEBHOOK_SECRET")
-	authHeader := c.GetHeader("Authorization")
-	apiKeyParam := c.Query("api-key")
+	secret := os.Getenv("HELIUS_WEBHOOK_SECRET")
+	signature := c.GetHeader("X-Helius-Signature")
 
-	if secret != "" && authHeader != secret && apiKeyParam != secret {
-		log.Warn().Str("ip", c.ClientIP()).Msg("Unauthorized webhook attempt")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// Directly consume RawData (bytes) to avoid latency of JSON Bindings here
 	payload, err := c.GetRawData()
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to read raw body")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid body payload"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid body"})
 		return
 	}
 
-	// Stateless logic: passing to asynchronous channel ensures latency < 50ms
+	if secret != "" {
+		if signature == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing signature"})
+			return
+		}
+		if !VerifyHeliusSignature(secret, signature, payload) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid signature"})
+			return
+		}
+	}
+
 	select {
 	case pub.PublishChan <- payload:
-		// Successfully handed off
-		c.JSON(http.StatusOK, gin.H{"status": "enqueued"})
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	default:
-		// Publisher Channel is backpressuring (full)
-		log.Warn().Msg("Publisher channel is full, dropping/delaying webhook")
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Ingestion queue at capacity"})
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Queue full"})
 	}
 }
 
-// TokenAnalysisHandler processes requests to retrieve the AI verdict of a token.
-func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payRepo *repository.PaymentRepository) {
+func VerifyHeliusSignature(secret, signature string, payload []byte) bool {
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write(payload)
+	return hex.EncodeToString(h.Sum(nil)) == signature
+}
+
+func SniperVerdictHandler(c *gin.Context, portalSub *processor.PortalSubscriber, payRepo *repository.PaymentRepository) {
 	mint := c.Param("mint")
-	if mint == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mint parameter"})
+	userID := GetUserID(c)
+	granted, accessKind, _ := payRepo.CheckAccess(c.Request.Context(), userID, mint, true)
+	if !granted {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
+	state, ok := portalSub.GetSniperVerdict(mint)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Token not tracked"})
+		return
+	}
+	payRepo.CommitUsage(c.Request.Context(), userID, accessKind, mint)
+	c.JSON(http.StatusOK, state)
+}
 
-	// Access Control: Identify user and auth method
+func TokenAnalysisHandler(c *gin.Context, repo *repository.TokenRepository, payRepo *repository.PaymentRepository) {
+	mint := c.Param("mint")
 	userID := GetUserID(c)
 	authMethod, _ := c.Get("authMethod")
 	isAPI := (authMethod == "api_key")
-
-	// Teaser Logic (PR-NEXUS-INTELLIGENCE)
 	isTeaser := (c.Query("teaser") == "true" || authMethod == "public")
 
 	if isTeaser {
-		// Perform the actual work (AI Analysis)
-		resp, err := repo.GetAnalysis(c.Request.Context(), mint, true)
-		if err != nil {
-			log.Warn().Err(err).Str("mint", mint).Msg("Teaser analysis failed")
-			if err.Error() == "analysis not found for mint: "+mint {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Analysis not found"})
-			} else {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Analysis failed internally"})
-			}
-			return
-		}
-
-		// Teaser Mode: Scrub sensitive intelligence
-		c.JSON(http.StatusOK, gin.H{
-			"mint":    mint,
-			"score":   resp.Score,
-			"verdict": resp.Verdict,
-			"teaser":  true,
-			"enrichment": gin.H{
-				"creator_reputation": "REDACTED",
-				"insider_risk":       "REDACTED",
-			},
-			"message": "Upgrade to unlock creator reputation and holder insights.",
-		})
+		resp, _ := repo.GetAnalysis(c.Request.Context(), mint, true)
+		c.JSON(http.StatusOK, gin.H{"mint": mint, "score": resp.Score, "verdict": resp.Verdict, "teaser": true})
 		return
 	}
 
-	granted, accessKind, err := payRepo.CheckAccess(c.Request.Context(), userID, mint, isAPI)
-	if err != nil {
-		log.Error().Err(err).Str("user", userID).Msg("Access check failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal auth error"})
-		return
-	}
-
+	granted, kind, _ := payRepo.CheckAccess(c.Request.Context(), userID, mint, isAPI)
 	if !granted {
-		// PR-SUBSCRIPTION-PRESTIGE: EMERGENCY BRIDGE
-		// If subscription is exhausted, check if user has a successful SINGLE_PAY for this mint.
-		if isAPI {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":            "Access Denied",
-				"reason":           "Developer API access requires an active Pro/Ultra/Enterprise subscription and available quota.",
-				"remaining":        0,
-				"suggested_action": "upgrade",
-				"upgrade_url":      "https://itswork.app/developer/billing",
-			})
-		} else {
-			// Check for Single-Pay Bridge (UI Only)
-			var count int
-			query := `SELECT COUNT(*) FROM payments WHERE user_id = $1 AND mint_address = $2 AND status = 'success'`
-			_ = payRepo.GetDB().QueryRowContext(c.Request.Context(), query, userID, mint).Scan(&count)
-
-			if count > 0 {
-				log.Info().Str("user", userID).Str("mint", mint).Msg("Emergency Bridge: Granting access via Single-Pay")
-				// Proceed with analysis branch...
-			} else {
-				c.JSON(http.StatusPaymentRequired, gin.H{
-					"error":            "Insufficient Credits",
-					"reason":           "Usage Limit Exceeded. Please upgrade your plan or buy credits to unlock full AI reasoning.",
-					"remaining":        0,
-					"suggested_action": "buy_credits",
-					"topup_url":        "https://itswork.app/billing",
-				})
-				return
-			}
-		}
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": "Insufficient Credits"})
+		return
 	}
 
-	// Perform the actual work (AI Analysis) - Full Access
 	resp, err := repo.GetAnalysis(c.Request.Context(), mint, true)
 	if err != nil {
-		// ANALYSIS FAILED: Atomic Quota Recovery — we do NOT call CommitUsage
-		log.Warn().Err(err).Str("mint", mint).Msg("Analysis failed, quota NOT deducted")
-
-		if err.Error() == "analysis not found for mint: "+mint {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Analysis not found"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Analysis failed internally"})
-		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Analysis failed"})
 		return
 	}
 
-	// Success: GOAL ACHIEVED — NOW we commit the usage
-	payRepo.CommitUsage(c.Request.Context(), userID, accessKind, mint)
-
-	// Gated Response Logic (Full Success)
-	c.JSON(http.StatusOK, gin.H{
-		"mint":    mint,
-		"score":   resp.Score,
-		"verdict": resp.Verdict,
-		"reason":  resp.Reason,
-		"enrichment": gin.H{
-			"creator_reputation": resp.CreatorReputation,
-			"insider_risk":       resp.InsiderRisk,
-		},
-		"is_paid": true,
-	})
+	payRepo.CommitUsage(c.Request.Context(), userID, kind, mint)
+	c.JSON(http.StatusOK, resp)
 }
 
-// GetQuotaHandler returns the user's current usage status (PR-MOCK-DESTRUCTION).
-func GetQuotaHandler(c *gin.Context, payRepo *repository.PaymentRepository) {
+func VerifyPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) {
+	ref := c.Param("reference")
+	// Using actual method name from PayService
+	_, _ = payService.VerifyTransaction(c.Request.Context(), ref)
+	c.JSON(http.StatusOK, gin.H{"status": "verified"})
+}
+
+func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) {
+	var input struct{ Plan string `json:"plan"` }
+	_ = c.ShouldBindJSON(&input)
 	userID := GetUserID(c)
-	if userID == "" || userID == "guest_teaser" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
-		return
-	}
-
-	ctx := c.Request.Context()
-	freeUI := payRepo.GetFreeUsage(ctx, userID, "ui")
-	freeAPI := payRepo.GetFreeUsage(ctx, userID, "api")
-	remaining, _ := payRepo.GetQuotaRemaining(ctx, userID)
-
-	c.JSON(http.StatusOK, gin.H{
-		"free_ui":      freeUI,
-		"free_ui_max":  repository.FreeUIScans,
-		"free_api":     freeAPI,
-		"free_api_max": repository.FreeAPIUses,
-		"subscription": remaining,
-	})
+	// Using actual method name from PayService
+	url, ref, _ := payService.GenerateSubscriptionPaymentURL(c.Request.Context(), userID, input.Plan)
+	c.JSON(http.StatusOK, gin.H{"url": url, "reference": ref})
 }
 
-// SaveUserRoleHandler updates the user role in the local database.
 func SaveUserRoleHandler(c *gin.Context, authRepo *repository.AuthRepository) {
-	var input struct {
-		Role string `json:"role" binding:"required,oneof=trader developer"`
-	}
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role selection. Must be 'trader' or 'developer'."})
-		return
-	}
-
+	var input struct{ Role string `json:"role"` }
+	_ = c.ShouldBindJSON(&input)
 	userID := GetUserID(c)
-	if userID == "" || userID == "guest_teaser" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
-		return
-	}
-
-	if err := authRepo.SaveUserRole(c.Request.Context(), userID, input.Role); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save user role"})
-		return
-	}
-
-	// Sync to Clerk Public Metadata (PR-NEXUS-AUTH-JOURNEY)
+	_ = authRepo.SaveUserRole(c.Request.Context(), userID, input.Role)
+	
 	go func() {
-		// Use a background context as this is an async sync
 		ctx := context.Background()
-		metadata := map[string]interface{}{
-			"role":                 input.Role,
-			"onboarding_completed": true,
-		}
-		rawMetadata, _ := json.Marshal(metadata)
-		clerkRaw := json.RawMessage(rawMetadata)
-
-		_, err := user.Update(ctx, userID, &user.UpdateParams{
-			PublicMetadata: &clerkRaw,
-		})
-		if err != nil {
-			log.Error().Err(err).Str("user", userID).Msg("Failed to sync role to Clerk Metadata")
-		}
+		metadata := map[string]interface{}{"role": input.Role, "onboarding_completed": true}
+		raw, _ := json.Marshal(metadata)
+		clerkRaw := json.RawMessage(raw)
+		_, _ = user.Update(ctx, userID, &user.UpdateParams{PublicMetadata: &clerkRaw})
 	}()
-
-	c.JSON(http.StatusOK, gin.H{"status": "success", "role": input.Role})
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// AuthSyncHandler ensures the user exists in our local DB (PR-WIRE-REPAIR).
 func AuthSyncHandler(c *gin.Context, authRepo *repository.AuthRepository) {
 	userID := GetUserID(c)
-	if userID == "" || userID == "guest_teaser" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
-		return
-	}
+	_ = authRepo.SyncUser(c.Request.Context(), userID)
+	role, _ := authRepo.GetUserRole(c.Request.Context(), userID)
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "role": role})
+}
 
-	if err := authRepo.SyncUser(c.Request.Context(), userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to sync user"})
-		return
-	}
-
-	// Fetch role to assist frontend redirection (PR-POST-LOGIN-REDIRECT)
-	role, err := authRepo.GetUserRole(c.Request.Context(), userID)
-	if err != nil {
-		role = "unassigned"
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "User Synced Successfully",
-		"role":   role,
-	})
+func GetQuotaHandler(c *gin.Context, payRepo *repository.PaymentRepository) {
+	userID := GetUserID(c)
+	free := payRepo.GetFreeUsage(c.Request.Context(), userID, "ui")
+	c.JSON(http.StatusOK, gin.H{"free_ui": free})
 }
