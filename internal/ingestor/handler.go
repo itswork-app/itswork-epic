@@ -12,7 +12,6 @@ import (
 
 	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog/log"
 
 	"itswork.app/internal/pay"
 	"itswork.app/internal/processor"
@@ -63,7 +62,8 @@ func SetupRouter(
 			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		}
 
-		corsHeaders := "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-API-KEY"
+		corsHeaders := "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, " +
+			"Authorization, accept, origin, Cache-Control, X-Requested-With, X-API-KEY"
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", corsHeaders)
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
@@ -215,7 +215,9 @@ func VerifyPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *r
 }
 
 func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService, payRepo *repository.PaymentRepository) {
-	var input struct{ Plan string `json:"plan"` }
+	var input struct {
+		Plan string `json:"plan"`
+	}
 	_ = c.ShouldBindJSON(&input)
 	userID := GetUserID(c)
 	// Using actual method name from PayService
@@ -224,11 +226,13 @@ func CreateSubscriptionPaymentHandler(c *gin.Context, payService *pay.PayService
 }
 
 func SaveUserRoleHandler(c *gin.Context, authRepo *repository.AuthRepository) {
-	var input struct{ Role string `json:"role"` }
+	var input struct {
+		Role string `json:"role"`
+	}
 	_ = c.ShouldBindJSON(&input)
 	userID := GetUserID(c)
 	_ = authRepo.SaveUserRole(c.Request.Context(), userID, input.Role)
-	
+
 	go func() {
 		ctx := context.Background()
 		metadata := map[string]interface{}{"role": input.Role, "onboarding_completed": true}

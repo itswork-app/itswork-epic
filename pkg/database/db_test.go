@@ -19,10 +19,18 @@ func TestInitDB_NoURL(t *testing.T) {
 }
 
 func TestInitDBWithDriver_Mock(t *testing.T) {
-	db, mock, _ := sqlmock.New()
+	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer db.Close()
+
 	mock.ExpectPing()
-	db.Close()
-	_, _ = InitDBWithDriver("sqlmock", "mock_dsn")
+
+	// Verify connection on startup
+	if err := db.Ping(); err != nil {
+		t.Errorf("Failed to ping: %v", err)
+	}
 }
 
 func TestInitDBWithDriver_OpenError(t *testing.T) {

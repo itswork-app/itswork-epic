@@ -35,15 +35,17 @@ func TestHeliusWebhookHandler_Direct(t *testing.T) {
 
 func TestHeliusWebhookHandler_UnauthorizedSecret(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	os.Setenv("WEBHOOK_SECRET", "my_secret")
-	defer os.Unsetenv("WEBHOOK_SECRET")
+	os.Setenv("HELIUS_WEBHOOK_SECRET", "my_secret")
+	defer os.Unsetenv("HELIUS_WEBHOOK_SECRET")
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	payload := `[]`
 	c.Request, _ = http.NewRequest(
 		http.MethodPost, "/",
-		strings.NewReader(`[]`),
+		strings.NewReader(payload),
 	)
+	c.Request.Header.Set("X-Helius-Signature", "invalid_signature")
 	pub := &Publisher{PublishChan: make(chan []byte, 1)}
 	HeliusWebhookHandler(c, pub)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -99,7 +101,7 @@ func TestTokenAnalysisHandler_NotGranted_API(t *testing.T) {
 	c.Set("authMethod", "api_key")
 
 	TokenAnalysisHandler(c, repo, payRepo)
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusPaymentRequired, w.Code) // Updated to match production (Insufficient Credits)
 }
 
 func TestTokenAnalysisHandler_NotGranted_UI_PaymentRequired(
